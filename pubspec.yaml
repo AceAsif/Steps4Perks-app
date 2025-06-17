@@ -46,6 +46,12 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^5.0.0
 
+  #------ Adding extra library  ------
+  # Flutter Gauges library - Asif added it
+  # The Flutter Gauges library includes the data visualization widgets 
+  # Linear Gauge and Radial Gauge (a.k.a. circular gauge) to create modern, interactive, animated gauges.
+  syncfusion_flutter_gauges: ^29.2.11 
+
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 
