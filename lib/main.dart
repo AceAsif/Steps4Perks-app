@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-//import 'package:syncfusion_flutter_gauges/gauges.dart';
+import 'homepage.dart'; // To use homepage.dart file code
 
 void main() {
   runApp(const MyApp());
@@ -39,7 +39,7 @@ class _MyHomePageState extends State<MyHomePage> {
   //This part of the code is only for the content of the page
   static const List<Widget> _widgetOptions = <Widget>[
     // Home page content
-    Center(child: Text('Home Page', style: TextStyle(fontSize: 30))),
+    HomePageContent(), // This is the content for the Home page. This connects the 'Home' item of the bottom navigation bar to the HomePageContent widget.
     // Activity page content
     Center(child: Text('Activity Page', style: TextStyle(fontSize: 30))),
     // Rewards page content

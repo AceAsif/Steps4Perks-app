@@ -193,7 +193,7 @@ packages:
     source: hosted
     version: "29.2.11"
   syncfusion_flutter_gauges:
-    dependency: "direct dev"
+    dependency: "direct main"
     description:
       name: syncfusion_flutter_gauges
       sha256: "80d0d1a7dbf99272f6e181df9cd7567b6bff143bc010de0dcfde1410e6a62a20"
