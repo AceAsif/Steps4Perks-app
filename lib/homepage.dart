@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-//This gauage library is needed to use the gauge functionality.
-import 'package:syncfusion_flutter_gauges/gauges.dart';
+import 'package:myapp/features/step_gauge.dart';
+
 
 //This is the content for the Home page.
 class HomePageContent extends StatefulWidget {
@@ -11,40 +11,96 @@ class HomePageContent extends StatefulWidget {
 }
 
 class _HomePageContentState extends State<HomePageContent> {
+  int currentSteps = 0;
 
- @override
+  void simulateStepIncrease() {
+    setState(() {
+      currentSteps += 500; // Simulate 500 more steps
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Container(
-        padding: EdgeInsets.all(32.0),
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+
+    return SafeArea( // Ensures content stays within safe screen bounds (avoids status bar & notches)
+      child: SingleChildScrollView( // Makes the entire screen scrollable to prevent overflow
+        padding: EdgeInsets.symmetric(
+          horizontal: screenWidth * 0.08,
+          vertical: screenHeight * 0.02,
+        ),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-             Text('Hello Asif',
-                  style: TextStyle(
-                  fontSize: 20.0,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.blue,
-                  fontStyle: FontStyle.italic,
-                  ),
+            Text(
+              'Hello Asif',
+              style: TextStyle(
+                fontSize: screenWidth * 0.05,
+                fontWeight: FontWeight.bold,
+                color: Colors.blue,
+                fontStyle: FontStyle.italic,
               ),
-             // TODO: implement the Gauge functionality. Link: https://pub.dev/packages/syncfusion_flutter_gauges#add-radial-gauge-to-the-widget-tree
-             SfRadialGauge(), //This is the Radial Gauge
-             Text('Daily Goal'),
-              // TODO: implement the progress bar functionality.
-             LinearProgressIndicator(
-                value: 0.5, // The current progress (0.0 to 1.0)
-                backgroundColor: Colors.grey, // The background color of the track
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.blue), // The color of the progress indicator
+            ),
+
+            SizedBox(height: screenHeight * 0.02),
+
+            // Gauge wrapped in a SizedBox for responsive scaling
+            SizedBox(
+              width: screenWidth * 0.65, // 65% of screen width
+              height: screenWidth * 0.65, // Square ratio
+              // Call the function from step_gauge.dart
+              child: StepGauge(currentSteps: currentSteps), // Pass dynamic value 
+            ),
+            SizedBox(height: screenHeight * 0.02),
+
+            Text(
+              'Daily Goal',
+              style: TextStyle(fontSize: screenWidth * 0.045),
+            ),
+            SizedBox(height: screenHeight * 0.01),
+            Text(
+              '0 / 10,000 Steps',
+              style: TextStyle(fontSize: screenWidth * 0.045),
+            ),
+
+            SizedBox(height: screenHeight * 0.02),
+
+           Container(
+              width: MediaQuery.of(context).size.width * 0.75,
+              height: MediaQuery.of(context).size.height * 0.015,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(10),
               ),
-              // TODO: implement the redeem button functionality.
-              ElevatedButton(
-                onPressed: () {
-                  // Do something when the button is pressed
-                  Text('Button pressed!');
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: LinearProgressIndicator(
+                  value: 0.5,
+                  backgroundColor: Colors.transparent,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+                ),
+              ),
+            ),
+
+            SizedBox(height: screenHeight * 0.03),
+
+            SizedBox(
+              width: screenWidth * 0.6,
+              child: ElevatedButton(
+                onPressed: simulateStepIncrease,
+                child: const Text("Add 500 Steps"),
+                /*onPressed: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Button pressed!')),
+                  );
                 },
-                child: const Text('Redeem'),
-              )
+                child: const Text('Redeem'),*/
+              ),
+            ),
           ],
         ),
-      );
+      ),
+    );
   }
 }

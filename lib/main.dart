@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'homepage.dart'; // To use homepage.dart file code
+import 'rewardspage.dart'; // To use rewardspage.dart file code
 
 void main() {
   runApp(const MyApp());
@@ -16,7 +17,8 @@ class MyApp extends StatelessWidget {
       title: 'Steps4Perks',
       debugShowCheckedModeBanner: false, //This removes the debug sign
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        //I added the Tea Green colour because it looks Calming and Neutral
+        colorScheme: ColorScheme.fromSeed(seedColor: Color(0xFFD0F0C0)),
       ),
       home: const MyHomePage(title: 'Steps4Perks'),
     );
@@ -43,7 +45,8 @@ class _MyHomePageState extends State<MyHomePage> {
     // Activity page content
     Center(child: Text('Activity Page', style: TextStyle(fontSize: 30))),
     // Rewards page content
-    Center(child: Text('Rewards Page', style: TextStyle(fontSize: 30))),
+    RewardsPage(),
+    //Center(child: Text('Rewards Page', style: TextStyle(fontSize: 30))),
     // Profile page content
     Center(child: Text('Profile Page', style: TextStyle(fontSize: 30))),
   ];
@@ -94,7 +97,7 @@ class _MyHomePageState extends State<MyHomePage> {
         selectedItemColor: Colors.deepPurple, // You can change this color
         
         onTap: _onItemTapped,
-        backgroundColor: Colors.white,
+        backgroundColor: Color(0xFFD0F0C0),
       ),
     );
   }
