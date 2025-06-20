@@ -7,10 +7,10 @@ class StepGauge extends StatelessWidget {
   final int goalSteps;    // e.g., 10000
 
   const StepGauge({
-    Key? key,
+    super.key,
     required this.currentSteps,
     this.goalSteps = 10000,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

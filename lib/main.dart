@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'homepage.dart'; // To use homepage.dart file code
-import 'rewardspage.dart'; // To use rewardspage.dart file code
+import 'view/homepage.dart'; // To use homepage.dart file code
+import 'view/rewardspage.dart'; // To use rewardspage.dart file code
 
 void main() {
   runApp(const MyApp());

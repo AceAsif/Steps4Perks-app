@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:myapp/features/step_gauge.dart';
+import 'package:myapp/view/rewardspage.dart'; // Import the RewardsPage
 
 
 //This is the content for the Home page.
@@ -88,15 +89,21 @@ class _HomePageContentState extends State<HomePageContent> {
             SizedBox(
               width: screenWidth * 0.6,
               child: ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => RewardsPage()), // Navigate to RewardsPage
+                  ); // Navigate to RewardsPage
+                },
+                // Navigate to RewardsPage
+                child: const Text('Redeem'),
+              ),
+              /* 
+              //This code is for testing the gauge bar and can removed after the app is complete
+              child: ElevatedButton(
                 onPressed: simulateStepIncrease,
                 child: const Text("Add 500 Steps"),
-                /*onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Button pressed!')),
-                  );
-                },
-                child: const Text('Redeem'),*/
-              ),
+              ),*/
             ),
           ],
         ),
