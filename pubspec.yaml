@@ -40,6 +40,7 @@ dependencies:
   # The Flutter Gauges library includes the data visualization widgets 
   # Linear Gauge and Radial Gauge (a.k.a. circular gauge) to create modern, interactive, animated gauges.
   syncfusion_flutter_gauges: ^29.2.11
+  fl_chart: ^1.0.0
 
 dev_dependencies:
   flutter_test:
