@@ -25,39 +25,33 @@ class _ActivityPageState extends State<ActivityPage> {
         foregroundColor: Colors.black,
         elevation: 0,
       ),
-      body: Column(
-        children: [
-          // Tab Buttons
-          Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 30.0,
-              vertical: 12.0,
+      body: SingleChildScrollView(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 30.0, vertical: 12.0),
+              child: Row(
+                children: [
+                  _buildTabButton("Weekly", 0, screenWidth),
+                  const SizedBox(width: 12),
+                  _buildTabButton("Monthly", 1, screenWidth),
+                ],
+              ),
             ),
-            child: Row(
-              children: [
-                _buildTabButton("Weekly", 0, screenWidth),
-                const SizedBox(width: 12),
-                _buildTabButton("Monthly", 1, screenWidth),
-              ],
-            ),
-          ),
-
-          // Content Based on Selected Tab
-          Expanded(
-            child:
-                selectedTabIndex == 0
-                    // This one is for the weekly bar chart
-                    ? StepsBarChart(
-                      labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-                      stepValues: [1900, 7200, 14200, 9500, 9400, 8200, 7500],
-                    )
-                    // This one is for the monthly bar chart
-                    : StepsBarChart(
-                      labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
-                      stepValues: [5800, 6200, 7000, 8500, 9100],
-                    )
-          ),
-        ],
+            // Chart and Data
+            selectedTabIndex == 0
+                ? StepsBarChart(
+                    labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+                    stepValues: [1900, 7200, 14200, 9500, 9400, 8200, 7500],
+                    dateRange: 'Activity for 10 - 16 June 2025',
+                  )
+                : StepsBarChart(
+                    labels: ['1-7', '8-14', '15-21', '22-28', '29-31'],
+                    stepValues: [5800, 6200, 7000, 8500, 9100],
+                    dateRange: 'Activity for June 2025',
+                  ),
+          ],
+        ),
       ),
     );
   }
@@ -73,12 +67,9 @@ class _ActivityPageState extends State<ActivityPage> {
           });
         },
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 10),
+          padding: EdgeInsets.symmetric(vertical: screenWidth * 0.025),
           decoration: BoxDecoration(
-            color:
-                isSelected
-                    ? Colors.black
-                    : const Color.fromARGB(255, 230, 230, 230),
+            color: isSelected ? Colors.black : const Color(0xFFE6E6E6),
             borderRadius: BorderRadius.circular(25),
           ),
           child: Center(
@@ -86,7 +77,7 @@ class _ActivityPageState extends State<ActivityPage> {
               label,
               style: TextStyle(
                 color: isSelected ? Colors.white : Colors.black,
-                fontWeight: FontWeight.w500,
+                fontWeight: FontWeight.w600,
                 fontSize: screenWidth * 0.04,
               ),
             ),
