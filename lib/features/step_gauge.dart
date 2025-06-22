@@ -25,7 +25,7 @@ class StepGauge extends StatelessWidget {
           startAngle: 150, // left-side bottom
           endAngle: 30,    // right-side bottom
           showTicks: true, // This shows the marks near the number.
-          showLabels: true,
+          showLastLabel: true,
           canScaleToFit: true, // ensures full range including 10000 fits
           axisLineStyle: AxisLineStyle(
             thickness: 0.15,
@@ -47,7 +47,7 @@ class StepGauge extends StatelessWidget {
           annotations: <GaugeAnnotation>[
             GaugeAnnotation(
               angle: 90,
-              positionFactor: 0.1,
+              positionFactor: 0.01, // Moves it upward
               widget: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -61,7 +61,8 @@ class StepGauge extends StatelessWidget {
                   Text(
                     '/ $goalSteps Steps',
                     style: TextStyle(
-                      fontSize: 14,
+                      fontSize: 16, // <-- increase from 14 to 16 or 18
+                      fontWeight: FontWeight.w500, // optional: makes it bolder
                       color: Colors.grey,
                     ),
                   ),
