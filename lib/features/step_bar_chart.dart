@@ -105,18 +105,27 @@ class _StepsBarChartState extends State<StepsBarChart> {
                         reservedSize: 40,
                         getTitlesWidget: (value, _) {
                           if (value == 0) {
-                            return const Text('0k', style: TextStyle(fontSize: 10));
+                            return const Text(
+                              '0k',
+                              style: TextStyle(fontSize: 10),
+                            );
                           }
                           if (value % 5000 == 0) {
-                            return Text('${(value / 1000).toInt()}k',
-                                style: const TextStyle(fontSize: 10));
+                            return Text(
+                              '${(value / 1000).toInt()}k',
+                              style: const TextStyle(fontSize: 10),
+                            );
                           }
                           return const SizedBox.shrink();
                         },
                       ),
                     ),
-                    topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                    rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    topTitles: AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    rightTitles: AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
                   ),
                   gridData: FlGridData(
                     show: true,
@@ -157,7 +166,10 @@ class _StepsBarChartState extends State<StepsBarChart> {
                       );
                       rodStackItems.add(
                         BarChartRodStackItem(
-                            stepGoalThreshold, value, Colors.lightBlueAccent),
+                          stepGoalThreshold,
+                          value,
+                          Colors.lightBlueAccent,
+                        ),
                       );
                     }
 

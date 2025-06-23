@@ -25,6 +25,7 @@ class _BottomnavigationState extends State<Bottomnavigation> {
     // Rewards page content
     RewardsPage(),
     // Profile page content
+    ProfilePageContent(),
     // Assuming ProfilePage also has a widget, replacing Center for consistency
     // If ProfilePage is just a placeholder, you can keep Center or create a simple ProfilePageWidget
     // For demonstration, let's assume it's ProfilePage() or a similar widget.
@@ -64,7 +65,7 @@ class _BottomnavigationState extends State<Bottomnavigation> {
                   borderRadius: BorderRadius.circular(30.0), // Rounded corners
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.1), // Shadow color
+                      color: Color.fromRGBO(0, 0, 0, 0.1), // Equivalent to black with 10% opacity
                       spreadRadius: 2, // How much the shadow spreads
                       blurRadius: 10, // How blurry the shadow is
                       offset: const Offset(0, 5), // Offset of the shadow

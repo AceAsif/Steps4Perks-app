@@ -37,35 +37,42 @@ class _StepBoosterCardState extends State<StepBoosterCard> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Step Booster\nWatch ads to boost',
-                    style: TextStyle(
-                      fontSize: screenWidth * 0.045,
-                      fontWeight: FontWeight.bold,
-                      height: 1.3,
-                    )),
+                Text(
+                  'Step Booster\nWatch ads to boost',
+                  style: TextStyle(
+                    fontSize: screenWidth * 0.045,
+                    fontWeight: FontWeight.bold,
+                    height: 1.3,
+                  ),
+                ),
                 const SizedBox(height: 6),
-                Text('Watch 5 ads to activate 2× booster',
-                    style: TextStyle(
-                      fontSize: screenWidth * 0.035,
-                      color: Colors.grey[700],
-                    )),
+                Text(
+                  'Watch 5 ads to activate 2× booster',
+                  style: TextStyle(
+                    fontSize: screenWidth * 0.035,
+                    color: Colors.grey[700],
+                  ),
+                ),
                 const SizedBox(height: 6),
                 LinearProgressIndicator(
                   value: progressValue,
                   minHeight: 4,
                   backgroundColor: Colors.grey[300],
-                  valueColor: const AlwaysStoppedAnimation<Color>(Colors.orange),
+                  valueColor: const AlwaysStoppedAnimation<Color>(
+                    Colors.orange,
+                  ),
                 ),
               ],
             ),
           ),
           const SizedBox(width: 12),
           ElevatedButton(
-            onPressed: progressValue >= 1.0
-                ? () {
-                    // Handle booster activation
-                  }
-                : null,
+            onPressed:
+                progressValue >= 1.0
+                    ? () {
+                      // Handle booster activation
+                    }
+                    : null,
             child: const Text("Claim"),
           ),
         ],

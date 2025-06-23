@@ -30,7 +30,10 @@ class _RewardsPageState extends State<RewardsPage> {
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 30.0, vertical: 10.0), // more space from screen edge
+            padding: const EdgeInsets.symmetric(
+              horizontal: 30.0,
+              vertical: 10.0,
+            ), // more space from screen edge
             child: Row(
               children: [
                 _buildTabButton("Available", 0, screenWidth),
@@ -40,23 +43,24 @@ class _RewardsPageState extends State<RewardsPage> {
             ),
           ),
           Expanded(
-            child: selectedTabIndex == 0
-            ? ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                children: [
-                  GiftCard(
-                    icon: Icons.card_giftcard,
-                    title: 'Woolworths',
-                    subtitle: '\$25 Gift Card',
-                    progressText: '10,000 steps × 10 days',
-                    progressValue: 0.0,
-                  ),
-                  const SizedBox(height: 12),
-                  const StepBoosterCard(), // Now included from stepbooster.dart
-                ],
-              )
-            : const Center(child: Text("History Rewards List")),
-          )
+            child:
+                selectedTabIndex == 0
+                    ? ListView(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      children: [
+                        GiftCard(
+                          icon: Icons.card_giftcard,
+                          title: 'Woolworths',
+                          subtitle: '\$25 Gift Card',
+                          progressText: '10,000 steps × 10 days',
+                          progressValue: 0.0,
+                        ),
+                        const SizedBox(height: 12),
+                        const StepBoosterCard(), // Now included from stepbooster.dart
+                      ],
+                    )
+                    : const Center(child: Text("History Rewards List")),
+          ),
         ],
       ),
     );
@@ -74,7 +78,10 @@ class _RewardsPageState extends State<RewardsPage> {
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 10),
           decoration: BoxDecoration(
-            color: isSelected ? Colors.black : const Color.fromARGB(255, 213, 212, 212),
+            color:
+                isSelected
+                    ? Colors.black
+                    : const Color.fromARGB(255, 213, 212, 212),
             borderRadius: BorderRadius.circular(25),
           ),
           child: Center(
