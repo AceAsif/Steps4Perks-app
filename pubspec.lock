@@ -163,6 +163,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.9.1"
+  pedometer:
+    dependency: "direct main"
+    description:
+      name: pedometer
+      sha256: "71e2608ad472d1fc3bcfce14a151e5c8229c5edd9e2a8a0f1ec416e3ceb00e1a"
+      url: "https://pub.dev"
+    source: hosted
+    version: "4.1.1"
   sky_engine:
     dependency: transitive
     description: flutter
@@ -204,18 +212,18 @@ packages:
     dependency: transitive
     description:
       name: syncfusion_flutter_core
-      sha256: bee87cdfe527b31705190162e3bd27bf468d591ae7c68182244bdfd94e21f737
+      sha256: b86e8e24fc44c6a2759adfebd02bf27f2954062e6f3bd52343faa16966039b85
       url: "https://pub.dev"
     source: hosted
-    version: "29.2.11"
+    version: "30.1.37"
   syncfusion_flutter_gauges:
     dependency: "direct main"
     description:
       name: syncfusion_flutter_gauges
-      sha256: "80d0d1a7dbf99272f6e181df9cd7567b6bff143bc010de0dcfde1410e6a62a20"
+      sha256: d022f8ecd50dfc4d621d7a56c90a69c1c33fe5e90101625f563eae582396f872
       url: "https://pub.dev"
     source: hosted
-    version: "29.2.11"
+    version: "30.1.37"
   term_glyph:
     dependency: transitive
     description:

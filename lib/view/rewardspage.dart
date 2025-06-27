@@ -52,7 +52,7 @@ class _RewardsPageState extends State<RewardsPage> {
                           icon: Icons.card_giftcard,
                           title: 'Woolworths',
                           subtitle: '\$25 Gift Card',
-                          progressText: '10,000 steps × 10 days',
+                          progressText: '0 / 2,500 points',
                           progressValue: 0.0,
                         ),
                         const SizedBox(height: 12),
