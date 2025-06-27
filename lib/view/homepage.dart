@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:myapp/features/step_gauge.dart';
-import 'package:pedometer/pedometer.dart';
+import 'package:myapp/features/step_tracker.dart';
+import 'package:provider/provider.dart';
 
 class HomePageContent extends StatefulWidget {
 const HomePageContent({super.key});
@@ -10,39 +11,49 @@ const HomePageContent({super.key});
 }
 
 class _HomePageContentState extends State<HomePageContent> {
-  int currentSteps = 0;
-  late Stream<StepCount> _stepCountStream;
-
-  @override
-  void initState() {
-    super.initState();
-    initPedometer();
-  }
-
-  void initPedometer() {
-    _stepCountStream = Pedometer.stepCountStream;
-    _stepCountStream.listen(
-      onStepCount,
-      onError: onStepCountError,
-      onDone: () => debugPrint("Pedometer stream closed"),
-      cancelOnError: true,
-    );
-  }
-
-  void onStepCount(StepCount event) {
-    setState(() {
-      currentSteps = event.steps;
-    });
-  }
-
-  void onStepCountError(error) {
-    debugPrint("Pedometer error: $error");
-  }
+  int oldSteps = 0;
 
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
+
+    final stepTracker = Provider.of<StepTracker>(context);
+    final currentSteps = stepTracker.currentSteps;
+
+    // Store oldSteps to animate from previous to new value
+    final animatedSteps = TweenAnimationBuilder<int>(
+      tween: IntTween(begin: oldSteps, end: currentSteps),
+      duration: const Duration(milliseconds: 600),
+      builder: (context, value, child) {
+        return Text(
+          'Steps today: $value',
+          style: TextStyle(
+            fontSize: screenWidth * 0.045,
+            fontWeight: FontWeight.w500,
+            color: Colors.black87,
+          ),
+          textAlign: TextAlign.center,
+        );
+      },
+      onEnd: () {
+        oldSteps = currentSteps;
+      },
+    );
+
+    final animatedGauge = TweenAnimationBuilder<double>(
+      tween: Tween<double>(
+        begin: oldSteps.toDouble(),
+        end: currentSteps.toDouble(),
+      ),
+      duration: const Duration(milliseconds: 600),
+      builder: (context, value, child) {
+        return StepGauge(currentSteps: value.toInt());
+      },
+      onEnd: () {
+        oldSteps = currentSteps;
+      },
+    );
 
     return SafeArea(
       child: SingleChildScrollView(
@@ -66,24 +77,12 @@ class _HomePageContentState extends State<HomePageContent> {
                   ),
                   textAlign: TextAlign.center,
                 ),
-
                 SizedBox(
                   width: screenWidth * 0.65,
                   height: screenWidth * 0.65,
-                  child: StepGauge(currentSteps: currentSteps),
+                  child: animatedGauge,
                 ),
-
-                // New step count text
-                Text(
-                  'Steps today: $currentSteps',
-                  style: TextStyle(
-                    fontSize: screenWidth * 0.045,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.black87,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-
+                animatedSteps,
                 Text(
                   '4 Day Streaks',
                   style: TextStyle(fontSize: screenWidth * 0.045),
@@ -95,7 +94,6 @@ class _HomePageContentState extends State<HomePageContent> {
                   textAlign: TextAlign.center,
                 ),
                 SizedBox(height: screenHeight * 0.03),
-
                 SizedBox(
                   width: screenWidth * 0.6,
                   child: ElevatedButton(
@@ -125,5 +123,6 @@ class _HomePageContentState extends State<HomePageContent> {
         ),
       ),
     );
+
   }
 }

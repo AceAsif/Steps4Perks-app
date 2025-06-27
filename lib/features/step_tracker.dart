@@ -3,10 +3,10 @@ import 'package:pedometer/pedometer.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 class StepTracker with ChangeNotifier {
-  int _steps = 0;
-  Stream<StepCount>? _stepCountStream;
+  int _currentSteps = 0;
+  int get currentSteps => _currentSteps;
 
-  int get steps => _steps;
+  Stream<StepCount>? _stepCountStream;
 
   StepTracker() {
     _init();
@@ -18,22 +18,33 @@ class StepTracker with ChangeNotifier {
   }
 
   Future<void> _requestPermission() async {
-    if (await Permission.activityRecognition.isDenied) {
-      await Permission.activityRecognition.request();
+    final status = await Permission.activityRecognition.request();
+
+    if (status.isDenied) {
+      debugPrint("Permission denied temporarily.");
+    } else if (status.isPermanentlyDenied) {
+      debugPrint("Permission permanently denied.");
+      // This will open the app's settings page so the user can enable permission manually
+      await openAppSettings();
     }
   }
 
   void _startListening() {
     _stepCountStream = Pedometer.stepCountStream;
-    _stepCountStream?.listen(_onStepCount).onError(_onStepCountError);
+    _stepCountStream?.listen(
+      _onStepCount,
+      onError: _onStepCountError,
+      onDone: () => debugPrint("Pedometer stream closed"),
+      cancelOnError: true,
+    );
   }
 
   void _onStepCount(StepCount event) {
-    _steps = event.steps;
+    _currentSteps = event.steps;
     notifyListeners();
   }
 
   void _onStepCountError(error) {
-    debugPrint('Pedometer error: $error');
+    debugPrint("Pedometer error: $error");
   }
 }
