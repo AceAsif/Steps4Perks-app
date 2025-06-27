@@ -40,8 +40,20 @@ dependencies:
   # The Flutter Gauges library includes the data visualization widgets 
   # Linear Gauge and Radial Gauge (a.k.a. circular gauge) to create modern, interactive, animated gauges.
   syncfusion_flutter_gauges: ^30.1.37
+  # FL Chart is a highly customizable Flutter chart library 
+  # that supports Line Chart, Bar Chart, Pie Chart, Scatter Chart, and Radar Chart. 
   fl_chart: ^1.0.0
+  # This plugin allows for continuous step counting and pedestrian status 
+  # using the built-in pedometer sensor API of iOS and Android devices.
   pedometer: ^4.1.1
+  # This plugin provides a cross-platform (iOS, Android) API to request permissions and check their status. 
+  # You can also open the device's app settings so users can grant permission.
+  # On Android, you can show a rationale for requesting permission.
+  permission_handler: ^11.0.0
+  # The provider library in Flutter is a lightweight and flexible state management solution.
+  # A wrapper around InheritedWidget to make them easier to use and more reusable.
+  provider: ^6.1.5
+
 
 dev_dependencies:
   flutter_test:

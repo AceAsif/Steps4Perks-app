@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:myapp/features/step_gauge.dart';
+import 'package:pedometer/pedometer.dart';
 
 class HomePageContent extends StatefulWidget {
 const HomePageContent({super.key});
@@ -10,23 +11,45 @@ const HomePageContent({super.key});
 
 class _HomePageContentState extends State<HomePageContent> {
   int currentSteps = 0;
+  late Stream<StepCount> _stepCountStream;
 
-  void simulateStepIncrease() {
-  setState(() {
-  currentSteps += 500; // Simulate 500 more steps
-  });
+  @override
+  void initState() {
+    super.initState();
+    initPedometer();
+  }
+
+  void initPedometer() {
+    _stepCountStream = Pedometer.stepCountStream;
+    _stepCountStream.listen(
+      onStepCount,
+      onError: onStepCountError,
+      onDone: () => debugPrint("Pedometer stream closed"),
+      cancelOnError: true,
+    );
+  }
+
+  void onStepCount(StepCount event) {
+    setState(() {
+      currentSteps = event.steps;
+    });
+  }
+
+  void onStepCountError(error) {
+    debugPrint("Pedometer error: $error");
   }
 
   @override
   Widget build(BuildContext context) {
-  final screenWidth = MediaQuery.of(context).size.width;
-  final screenHeight = MediaQuery.of(context).size.height;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+
     return SafeArea(
       child: SingleChildScrollView(
         child: Center(
           child: Padding(
             padding: EdgeInsets.symmetric(
-              horizontal: screenWidth * 0.05, // optional mild padding
+              horizontal: screenWidth * 0.05,
               vertical: screenHeight * 0.03,
             ),
             child: Column(
@@ -44,12 +67,21 @@ class _HomePageContentState extends State<HomePageContent> {
                   textAlign: TextAlign.center,
                 ),
 
-                // Gauge chart
                 SizedBox(
                   width: screenWidth * 0.65,
                   height: screenWidth * 0.65,
                   child: StepGauge(currentSteps: currentSteps),
-                  //child: ColoredRangeGauge(value: 90),
+                ),
+
+                // New step count text
+                Text(
+                  'Steps today: $currentSteps',
+                  style: TextStyle(
+                    fontSize: screenWidth * 0.045,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.black87,
+                  ),
+                  textAlign: TextAlign.center,
                 ),
 
                 Text(
@@ -58,13 +90,12 @@ class _HomePageContentState extends State<HomePageContent> {
                   textAlign: TextAlign.center,
                 ),
                 Text(
-                  'Points earned today: 0/250',
+                  'Points earned today: ${(currentSteps / 100).floor()}/250',
                   style: TextStyle(fontSize: screenWidth * 0.045),
                   textAlign: TextAlign.center,
                 ),
                 SizedBox(height: screenHeight * 0.03),
 
-                // Redeem button
                 SizedBox(
                   width: screenWidth * 0.6,
                   child: ElevatedButton(
@@ -88,15 +119,6 @@ class _HomePageContentState extends State<HomePageContent> {
                     ),
                   ),
                 ),
-
-                // Optional: Simulate steps button (testing only)
-                /*
-                SizedBox(height: screenHeight * 0.02),
-                ElevatedButton(
-                  onPressed: simulateStepIncrease,
-                  child: const Text("Add 500 Steps"),
-                ),
-                */
               ],
             ),
           ),
