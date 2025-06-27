@@ -30,7 +30,7 @@ class _BottomnavigationState extends State<Bottomnavigation> {
     // If ProfilePage is just a placeholder, you can keep Center or create a simple ProfilePageWidget
     // For demonstration, let's assume it's ProfilePage() or a similar widget.
     // If you don't have a ProfilePage widget yet, you can use:
-    Center(child: Text('Profile Page', style: TextStyle(fontSize: 30))),
+    //Center(child: Text('Profile Page', style: TextStyle(fontSize: 30))),
     // Example: ProfilePage(),
   ];
 
