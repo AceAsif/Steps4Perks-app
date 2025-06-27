@@ -4,7 +4,7 @@
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
 
     <application
-        android:label="myapp"
+        android:label="Steps4Perks"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
