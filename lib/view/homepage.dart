@@ -7,11 +7,13 @@ class HomePageContent extends StatefulWidget {
 const HomePageContent({super.key});
 
 @override
-  _HomePageContentState createState() => _HomePageContentState();
+  HomePageContentState createState() => HomePageContentState();
 }
 
-class _HomePageContentState extends State<HomePageContent> {
-  int oldSteps = 0;
+class HomePageContentState extends State<HomePageContent> {
+  int _oldSteps = 0;
+
+  int get oldSteps => _oldSteps;
 
   @override
   Widget build(BuildContext context) {
@@ -37,7 +39,7 @@ class _HomePageContentState extends State<HomePageContent> {
         );
       },
       onEnd: () {
-        oldSteps = currentSteps;
+        _oldSteps = currentSteps;
       },
     );
 
@@ -51,7 +53,7 @@ class _HomePageContentState extends State<HomePageContent> {
         return StepGauge(currentSteps: value.toInt());
       },
       onEnd: () {
-        oldSteps = currentSteps;
+        _oldSteps = currentSteps;
       },
     );
 

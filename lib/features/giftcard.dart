@@ -7,14 +7,14 @@ class GiftCard extends StatefulWidget {
   final String progressText;
   final double progressValue;
 
-  const GiftCard({
-    Key? key,
+   const GiftCard({
+    super.key, // <- use_super_parameters here
     required this.icon,
     required this.title,
     required this.subtitle,
     required this.progressText,
     required this.progressValue,
-  }) : super(key: key);
+  });
 
   @override
   State<GiftCard> createState() => _GiftCardState();

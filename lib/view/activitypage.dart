@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:myapp/features/step_bar_chart.dart';
 
 class ActivityPage extends StatefulWidget {
-  const ActivityPage({Key? key}) : super(key: key);
+  const ActivityPage({super.key});
 
   @override
   State<ActivityPage> createState() => _ActivityPageState();

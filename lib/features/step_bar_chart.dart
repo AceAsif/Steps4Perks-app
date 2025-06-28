@@ -7,11 +7,11 @@ class StepsBarChart extends StatefulWidget {
   final String dateRange; // New property for the date range text
 
   const StepsBarChart({
-    Key? key,
+    super.key,
     required this.labels,
     required this.stepValues,
     required this.dateRange, // Make it required
-  }) : super(key: key);
+  });
 
   @override
   State<StepsBarChart> createState() => _StepsBarChartState();

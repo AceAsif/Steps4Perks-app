@@ -4,13 +4,16 @@ import 'package:myapp/features/stepbooster.dart'; // This calls the stepbooster.
 
 
 class RewardsPage extends StatefulWidget {
-  const RewardsPage({Key? key}) : super(key: key);
+  const RewardsPage({super.key});
 
   @override
-  _RewardsPageState createState() => _RewardsPageState();
+  RewardsPageState createState() => RewardsPageState();
 }
 
-class _RewardsPageState extends State<RewardsPage> {
+class RewardsPageState extends State<RewardsPage> {
+  //It creates a GlobalKey that allows you to access and interact with the internal state of 
+  // the StepBoosterCard widget from outside its class (typically from the parent widget).
+  final GlobalKey<StepBoosterCardState> _boosterKey = GlobalKey<StepBoosterCardState>();
   int selectedTabIndex = 0; // 0 = Available, 1 = History
 
   @override
@@ -56,13 +59,31 @@ class _RewardsPageState extends State<RewardsPage> {
                           progressValue: 0.0,
                         ),
                         const SizedBox(height: 12),
-                        const StepBoosterCard(), // Now included from stepbooster.dart
+                        StepBoosterCard(key: _boosterKey), // Now included from stepbooster.dart
                       ],
                     )
                     : const Center(child: Text("History Rewards List")),
           ),
         ],
       ),
+
+      /*
+      /// ✅ Here's the floating action button
+      floatingActionButton: selectedTabIndex == 0
+          ? FloatingActionButton(
+              onPressed: () {
+                // Increment the booster progress by 20%
+                _boosterKey.currentState?.increaseProgress(0.2);
+              },
+              backgroundColor: Colors.orange,
+              child: const Icon(Icons.play_arrow),
+              tooltip: 'Simulate Ad Watch',
+            )
+          : null,
+          
+      // ✅ Set FAB location
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+    */
     );
   }
 

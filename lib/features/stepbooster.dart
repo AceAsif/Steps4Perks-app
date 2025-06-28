@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 
 class StepBoosterCard extends StatefulWidget {
-  const StepBoosterCard({Key? key}) : super(key: key);
+  const StepBoosterCard({super.key});
 
   @override
-  _StepBoosterCardState createState() => _StepBoosterCardState();
+  StepBoosterCardState createState() => StepBoosterCardState();
 }
 
-class _StepBoosterCardState extends State<StepBoosterCard> {
-  double progressValue = 0.3; // This would change based on ads watched or steps
+class StepBoosterCardState extends State<StepBoosterCard> {
+  double progressValue = 0.3;
 
   void increaseProgress(double increment) {
     setState(() {
