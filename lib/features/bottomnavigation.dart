@@ -57,51 +57,45 @@ class _BottomnavigationState extends State<Bottomnavigation> {
           Align(
             alignment: Alignment.bottomCenter,
             child: Padding(
-              padding: const EdgeInsets.only(bottom: 20.0), // Adjust bottom padding as needed
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).padding.bottom + 16, // dynamic bottom safe area + spacing
+                left: 16,
+                right: 16,
+              ),
               child: Container(
-                margin: const EdgeInsets.symmetric(horizontal: 20.0), // Margin from left and right edges
                 decoration: BoxDecoration(
-                  color: const Color(0xFFD0F0C0), // Background color of the floating bar
-                  borderRadius: BorderRadius.circular(30.0), // Rounded corners
+                  color: const Color(0xFFD0F0C0),
+                  borderRadius: BorderRadius.circular(30.0),
                   boxShadow: [
                     BoxShadow(
                       color: Color.fromRGBO(0, 0, 0, 0.1), // Equivalent to black with 10% opacity
-                      spreadRadius: 2, // How much the shadow spreads
-                      blurRadius: 10, // How blurry the shadow is
-                      offset: const Offset(0, 5), // Offset of the shadow
+                      spreadRadius: 2,
+                      blurRadius: 10,
+                      offset: const Offset(0, 5),
                     ),
                   ],
                 ),
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(30.0), // Clip content to rounded corners
+                  borderRadius: BorderRadius.circular(30.0),
                   child: BottomNavigationBar(
-                    // Important: Set background color to transparent to see the Container's color
                     backgroundColor: Colors.transparent,
-                    elevation: 0, // No shadow from the BottomNavigationBar itself
-                    type: BottomNavigationBarType.fixed, // Fixed type for more than 3 items
+                    elevation: 0,
+                    type: BottomNavigationBarType.fixed,
                     items: const <BottomNavigationBarItem>[
-                      BottomNavigationBarItem(
-                          icon: Icon(Icons.home), label: 'Home'),
-                      BottomNavigationBarItem(
-                        icon: Icon(Icons.directions_run),
-                        label: 'Activity',
-                      ),
-                      BottomNavigationBarItem(
-                        icon: Icon(Icons.card_giftcard),
-                        label: 'Rewards',
-                      ),
-                      BottomNavigationBarItem(
-                          icon: Icon(Icons.person), label: 'Profile'),
+                      BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
+                      BottomNavigationBarItem(icon: Icon(Icons.directions_run), label: 'Activity'),
+                      BottomNavigationBarItem(icon: Icon(Icons.card_giftcard), label: 'Rewards'),
+                      BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
                     ],
                     currentIndex: _selectedIndex,
                     selectedItemColor: Colors.deepPurple,
-                    unselectedItemColor: Colors.grey[700], // Adjust unselected color for visibility
+                    unselectedItemColor: Colors.grey[700],
                     onTap: _onItemTapped,
                   ),
                 ),
               ),
             ),
-          ),
+          )
         ],
       ),
       // No bottomNavigationBar property here anymore
