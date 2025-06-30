@@ -19,7 +19,7 @@ class _BottomnavigationState extends State<Bottomnavigation> {
   // This part of the code is only for the content of the page
   static const List<Widget> _widgetOptions = <Widget>[
     // Home page content
-    HomePageContent(), // This is the content for the Home page. This connects the 'Home' item of the bottom 
+    HomePageContent(), // This is the content for the Home page. This connects the 'Home' item of the bottom
     // Activity page content
     ActivityPage(),
     // Rewards page content
@@ -43,62 +43,123 @@ class _BottomnavigationState extends State<Bottomnavigation> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        title: Text(widget.title),
-      ),
-      // Use Stack to place the page content and the floating navigation bar
-      body: Stack(
-        children: [
-          // This is the main content area of the selected page
-          _widgetOptions.elementAt(_selectedIndex),
-
-          // This positions the floating navigation bar at the bottom center
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: Padding(
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.of(context).padding.bottom + 16, // dynamic bottom safe area + spacing
-                left: 16,
-                right: 16,
+      extendBodyBehindAppBar: true,
+      body: SafeArea(
+        child: Column(
+          children: [
+            // 🔝 Custom Top Row
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16.0,
+                vertical: 12.0,
               ),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: const Color(0xFFD0F0C0),
-                  borderRadius: BorderRadius.circular(30.0),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Color.fromRGBO(0, 0, 0, 0.1), // Equivalent to black with 10% opacity
-                      spreadRadius: 2,
-                      blurRadius: 10,
-                      offset: const Offset(0, 5),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // Bell Icon
+                  IconButton(
+                    icon: const Icon(Icons.notifications_none, size: 28),
+                    onPressed: () {
+                      // TODO: Notification action
+                    },
+                  ),
+
+                  // Centered Title
+                  Expanded(
+                    child: Center(
+                      child: Text(
+                        'Hello Asif',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
+                        ),
+                      ),
                     ),
-                  ],
+                  ),
+
+                  // Profile Icon
+                  GestureDetector(
+                    onTap: () {
+                      // TODO: Go to profile
+                    },
+                    child: CircleAvatar(
+                      radius: 18,
+                      backgroundImage: AssetImage(
+                        'assets/profile.png',
+                      ), // Add your image here
+                      // backgroundColor: Colors.grey[300], // fallback
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Rest of the content here (progress, steps, streaks etc.)
+            Expanded(
+              child: _widgetOptions.elementAt(
+                _selectedIndex,
+              ), // From your tab logic
+            ),
+
+            // 🔻 Bottom navigation remains unchanged
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: Padding(
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(context).padding.bottom + 16,
+                  left: 16,
+                  right: 16,
                 ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(30.0),
-                  child: BottomNavigationBar(
-                    backgroundColor: Colors.transparent,
-                    elevation: 0,
-                    type: BottomNavigationBarType.fixed,
-                    items: const <BottomNavigationBarItem>[
-                      BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-                      BottomNavigationBarItem(icon: Icon(Icons.directions_run), label: 'Activity'),
-                      BottomNavigationBarItem(icon: Icon(Icons.card_giftcard), label: 'Rewards'),
-                      BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(30.0),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Color.fromRGBO(0, 0, 0, 0.1),
+                        spreadRadius: 2,
+                        blurRadius: 10,
+                        offset: const Offset(0, 5),
+                      ),
                     ],
-                    currentIndex: _selectedIndex,
-                    selectedItemColor: Colors.deepPurple,
-                    unselectedItemColor: Colors.grey[700],
-                    onTap: _onItemTapped,
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(30.0),
+                    child: BottomNavigationBar(
+                      backgroundColor: Colors.transparent,
+                      elevation: 0,
+                      type: BottomNavigationBarType.fixed,
+                      items: const <BottomNavigationBarItem>[
+                        BottomNavigationBarItem(
+                          icon: Icon(Icons.home),
+                          label: 'Home',
+                        ),
+                        BottomNavigationBarItem(
+                          icon: Icon(Icons.directions_run),
+                          label: 'Activity',
+                        ),
+                        BottomNavigationBarItem(
+                          icon: Icon(Icons.card_giftcard),
+                          label: 'Rewards',
+                        ),
+                        BottomNavigationBarItem(
+                          icon: Icon(Icons.person),
+                          label: 'Profile',
+                        ),
+                      ],
+                      currentIndex: _selectedIndex,
+                      selectedItemColor: Colors.deepPurple,
+                      unselectedItemColor: Colors.grey,
+                      onTap: _onItemTapped,
+                    ),
                   ),
                 ),
               ),
             ),
-          )
-        ],
+          ],
+        ),
       ),
-      // No bottomNavigationBar property here anymore
     );
   }
 }

@@ -20,12 +20,8 @@ class ProfilePageContent extends StatelessWidget {
               // Profile avatar
               CircleAvatar(
                 radius: screenWidth * 0.12,
-                backgroundColor: Colors.grey,
-                child: Icon(
-                  Icons.person,
-                  size: screenWidth * 0.12,
-                  color: Colors.white,
-                ),
+                backgroundImage: AssetImage('assets/profile.png'),
+                backgroundColor: Colors.transparent, // Optional fallback
               ),
               SizedBox(height: screenHeight * 0.02),
 
