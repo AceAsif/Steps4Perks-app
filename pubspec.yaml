@@ -49,10 +49,16 @@ dependencies:
   # This plugin provides a cross-platform (iOS, Android) API to request permissions and check their status. 
   # You can also open the device's app settings so users can grant permission.
   # On Android, you can show a rationale for requesting permission.
-  permission_handler: ^11.0.0
+  permission_handler: ^12.0.0+1
   # The provider library in Flutter is a lightweight and flexible state management solution.
   # A wrapper around InheritedWidget to make them easier to use and more reusable.
   provider: ^6.1.5
+  # shared_preferences is a Flutter plugin that provides persistent storage for 
+  # simple data — like saving key–value pairs (e.g., settings, counters, flags) on the device locally.
+  shared_preferences: ^2.5.3
+  # The intl package in Flutter/Dart is used for internationalisation and 
+  # localisation (i18n/l10n) — making your app ready for multiple languages, regions, and formats like dates, numbers, and currencies.
+  intl: ^0.20.2
 
 
 dev_dependencies:
