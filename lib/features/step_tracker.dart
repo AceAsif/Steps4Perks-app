@@ -9,7 +9,15 @@ class StepTracker with ChangeNotifier {
   int get currentSteps => _currentSteps;
 
   int _baseSteps = 0;
+  int _totalPoints = 0;
+  int get totalPoints => _totalPoints;
+
   Stream<StepCount>? _stepCountStream;
+
+  static const int stepsPerPoint = 100;
+  static const int maxDailySteps = 10000;
+  static const int maxDailyPoints = 100;
+  static const int giftCardThreshold = 2500;
 
   StepTracker() {
     _init();
@@ -18,6 +26,7 @@ class StepTracker with ChangeNotifier {
   Future<void> _init() async {
     await _requestPermission();
     await _loadBaseline();
+    await _loadPoints();
     _startListening();
   }
 
@@ -43,8 +52,30 @@ class StepTracker with ChangeNotifier {
     if (lastDate != today) {
       // New day — wait for first step count to set baseline
       _baseSteps = -1;
+      prefs.setInt('dailySteps', 0);
     } else {
       _baseSteps = prefs.getInt('baseSteps') ?? 0;
+    }
+  }
+
+  Future<void> _loadPoints() async {
+    final prefs = await SharedPreferences.getInstance();
+    _totalPoints = prefs.getInt('totalPoints') ?? 0;
+  }
+
+  int get dailyPoints {
+    final cappedSteps = _currentSteps.clamp(0, maxDailySteps);
+    return (cappedSteps / stepsPerPoint).floor();
+  }
+
+  bool get canRedeemGiftCard => _totalPoints >= giftCardThreshold;
+
+  void redeemGiftCard() async {
+    if (_totalPoints >= giftCardThreshold) {
+      _totalPoints -= giftCardThreshold;
+      final prefs = await SharedPreferences.getInstance();
+      prefs.setInt('totalPoints', _totalPoints);
+      notifyListeners();
     }
   }
 
@@ -57,10 +88,22 @@ class StepTracker with ChangeNotifier {
       _baseSteps = event.steps;
       prefs.setString('lastResetDate', today);
       prefs.setInt('baseSteps', _baseSteps);
+      return;
     }
 
     _currentSteps = event.steps - _baseSteps;
     if (_currentSteps < 0) _currentSteps = 0; // Avoid negative values
+
+    final storedSteps = prefs.getInt('dailySteps') ?? 0;
+    final oldPoints = (storedSteps.clamp(0, maxDailySteps)) ~/ stepsPerPoint;
+    final newPoints = (currentSteps.clamp(0, maxDailySteps)) ~/ stepsPerPoint;
+
+    if (newPoints > oldPoints) {
+      final gained = newPoints - oldPoints;
+      _totalPoints += gained;
+      prefs.setInt('totalPoints', _totalPoints);
+      prefs.setInt('dailySteps', _currentSteps);
+    }
 
     notifyListeners();
   }

@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:myapp/features/giftcard.dart'; // This calls the giftcard.dart file to use the gift card.
 import 'package:myapp/features/stepbooster.dart'; // This calls the stepbooster.dart file to use the step booster.
-
+import 'package:myapp/features/step_tracker.dart';
 
 class RewardsPage extends StatefulWidget {
   const RewardsPage({super.key});
@@ -11,25 +12,44 @@ class RewardsPage extends StatefulWidget {
 }
 
 class RewardsPageState extends State<RewardsPage> {
-  //It creates a GlobalKey that allows you to access and interact with the internal state of 
+  //It creates a GlobalKey that allows you to access and interact with the internal state of
   // the StepBoosterCard widget from outside its class (typically from the parent widget).
-  final GlobalKey<StepBoosterCardState> _boosterKey = GlobalKey<StepBoosterCardState>();
+  final GlobalKey<StepBoosterCardState> _boosterKey =
+      GlobalKey<StepBoosterCardState>();
   int selectedTabIndex = 0; // 0 = Available, 1 = History
 
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
 
+    final stepTracker = Provider.of<StepTracker>(context);
+    final tracker = Provider.of<StepTracker>(context);
+    final steps = tracker.currentSteps;
+    final dailyPoints = tracker.dailyPoints;
+    int totalPoints = tracker.totalPoints;
+    final canRedeem = tracker.canRedeemGiftCard;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 22.0),
-          child: Text('Rewards'),
-        ),
         backgroundColor: Colors.white,
         foregroundColor: Colors.black,
         elevation: 0,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // removing rewards as it seems not needed
+            // const Text(
+            //   'Rewards',
+            //   style: TextStyle(fontWeight: FontWeight.bold),
+            // ),
+            Text(
+              'Total Points: $totalPoints',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
       ),
+
       body: Column(
         children: [
           Padding(
@@ -55,11 +75,25 @@ class RewardsPageState extends State<RewardsPage> {
                           icon: Icons.card_giftcard,
                           title: 'Woolworths',
                           subtitle: '\$25 Gift Card',
-                          progressText: '0 / 2,500 points',
-                          progressValue: 0.0,
+                          progressText: '$totalPoints / 2,500 points',
+                          progressValue: totalPoints / 2500,
+                          isClaimable: totalPoints >= 2500,
+                          onClaimPressed: () {
+                            setState(() {
+                              totalPoints -= 2500;
+                            });
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Gift card claimed!'),
+                              ),
+                            );
+                          },
                         ),
+
                         const SizedBox(height: 12),
-                        StepBoosterCard(key: _boosterKey), // Now included from stepbooster.dart
+                        StepBoosterCard(
+                          key: _boosterKey,
+                        ), // Now included from stepbooster.dart
                       ],
                     )
                     : const Center(child: Text("History Rewards List")),
