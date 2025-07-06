@@ -59,6 +59,11 @@ dependencies:
   # The intl package in Flutter/Dart is used for internationalisation and 
   # localisation (i18n/l10n) — making your app ready for multiple languages, regions, and formats like dates, numbers, and currencies.
   intl: ^0.20.2
+  # The flutter_local_notifications plugin allows you to display notifications 
+  # on the device locally, even when your app is in the background or closed.
+  flutter_local_notifications: ^19.3.0
+  # Provides accurate and efficient time zone conversions and handling.
+  timezone: ^0.10.1
 
 
 dev_dependencies:
