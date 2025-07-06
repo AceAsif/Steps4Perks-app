@@ -44,7 +44,7 @@ class HomePageContentState extends State<HomePageContent> {
                   Provider.of<StepTracker>(
                     context,
                     listen: false,
-                  ).addMockSteps(10000);
+                  ).addMockSteps(500);
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.grey.shade300,
@@ -90,32 +90,8 @@ class HomePageContentState extends State<HomePageContent> {
     );
   }
 
-  /*
-  Widget _buildStepCountText(double screenWidth, int currentSteps) {
-    return TweenAnimationBuilder<int>(
-      tween: IntTween(begin: _oldSteps, end: currentSteps),
-      duration: const Duration(milliseconds: 600),
-      builder: (context, value, child) {
-        return Padding(
-          padding: const EdgeInsets.only(top: 8.0, bottom: 16.0),
-          child: Text(
-            'Steps today: $value',
-            style: TextStyle(
-              fontSize: screenWidth * 0.045,
-              fontWeight: FontWeight.w500,
-              color: Colors.black87,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        );
-      },
-      onEnd: () {
-        _oldSteps = currentSteps;
-      },
-    );
-  }*/
-
   Widget _buildSummaryCards(int currentSteps) {
+    final stepTracker = Provider.of<StepTracker>(context, listen: false);
     return Row(
       children: [
         Expanded(
@@ -129,8 +105,8 @@ class HomePageContentState extends State<HomePageContent> {
         Expanded(
           child: _buildCard(
             label: 'Points Earned',
-            value: '${(currentSteps / 100).floor()} / 100',
-            showFireIcon: false, // No fire emoji here
+            value: '${stepTracker.dailyPoints} / 100',
+            showFireIcon: false,
           ),
         ),
       ],

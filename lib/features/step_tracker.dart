@@ -15,10 +15,8 @@ class StepTracker with ChangeNotifier {
   Stream<StepCount>? _stepCountStream;
 
   static const int stepsPerPoint = 100;
-  // static const int maxDailySteps = 10000;
-  static const int maxDailySteps = 100000;
-  // static const int maxDailyPoints = 100;
-  static const int maxDailyPoints = 100000;
+  static const int maxDailySteps = 10000;  // ✅ Max step cap for points
+  static const int maxDailyPoints = 100;   // Derived automatically, kept for reference
   static const int giftCardThreshold = 2500;
 
   StepTracker() {
@@ -46,28 +44,26 @@ class StepTracker with ChangeNotifier {
     );
   }
 
-  //TODO: Remove later
-  //To mock the steps with button.
+  // ✅ Mock step adder for testing:
   void addMockSteps(int stepsToAdd) async {
     _currentSteps += stepsToAdd;
 
     final prefs = await SharedPreferences.getInstance();
     final storedSteps = prefs.getInt('dailySteps') ?? 0;
 
+    final cappedSteps = _currentSteps.clamp(0, maxDailySteps);
     final oldPoints = (storedSteps.clamp(0, maxDailySteps)) ~/ stepsPerPoint;
-    // final newPoints = (_currentSteps.clamp(0, maxDailySteps)) ~/ stepsPerPoint;
-    final newPoints = (_currentSteps) ~/ stepsPerPoint;
+    final newPoints = (cappedSteps) ~/ stepsPerPoint;
 
     if (newPoints > oldPoints) {
       final gained = newPoints - oldPoints;
       _totalPoints += gained;
       prefs.setInt('totalPoints', _totalPoints);
-      prefs.setInt('dailySteps', _currentSteps);
+      prefs.setInt('dailySteps', cappedSteps);
     }
 
     notifyListeners();
   }
-  //-----TODO: Remove later ends--------
 
   Future<void> _loadBaseline() async {
     final prefs = await SharedPreferences.getInstance();
@@ -75,7 +71,6 @@ class StepTracker with ChangeNotifier {
     final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
 
     if (lastDate != today) {
-      // New day — wait for first step count to set baseline
       _baseSteps = -1;
       prefs.setInt('dailySteps', 0);
     } else {
@@ -109,7 +104,6 @@ class StepTracker with ChangeNotifier {
     final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
 
     if (_baseSteps == -1) {
-      // First reading of the day becomes the baseline
       _baseSteps = event.steps;
       prefs.setString('lastResetDate', today);
       prefs.setInt('baseSteps', _baseSteps);
@@ -117,17 +111,18 @@ class StepTracker with ChangeNotifier {
     }
 
     _currentSteps = event.steps - _baseSteps;
-    if (_currentSteps < 0) _currentSteps = 0; // Avoid negative values
+    if (_currentSteps < 0) _currentSteps = 0;
 
     final storedSteps = prefs.getInt('dailySteps') ?? 0;
+    final cappedSteps = _currentSteps.clamp(0, maxDailySteps);
     final oldPoints = (storedSteps.clamp(0, maxDailySteps)) ~/ stepsPerPoint;
-    final newPoints = (currentSteps.clamp(0, maxDailySteps)) ~/ stepsPerPoint;
+    final newPoints = (cappedSteps) ~/ stepsPerPoint;
 
     if (newPoints > oldPoints) {
       final gained = newPoints - oldPoints;
       _totalPoints += gained;
       prefs.setInt('totalPoints', _totalPoints);
-      prefs.setInt('dailySteps', _currentSteps);
+      prefs.setInt('dailySteps', cappedSteps);
     }
 
     notifyListeners();
