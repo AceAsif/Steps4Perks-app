@@ -3,8 +3,7 @@ import 'package:myapp/view/homepage.dart'; // To use homepage.dart file code
 import 'package:myapp/view/rewardspage.dart'; // To use rewardspage.dart file code
 import 'package:myapp/view/activitypage.dart'; // To use activitypage.dart file code
 import 'package:myapp/view/profilepage.dart'; // To use profilepage.dart file code
-import 'package:myapp/features/step_tracker.dart';
-import 'package:provider/provider.dart';
+import 'package:myapp/widgets/custom_top_bar.dart';
 
 class Bottomnavigation extends StatefulWidget {
   const Bottomnavigation({super.key, required this.title});
@@ -39,49 +38,7 @@ class _BottomnavigationState extends State<Bottomnavigation> {
         child: Column(
           children: [
             // 🔝 Custom Top Bar with Notification Badge
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  // Bell Icon with Badge
-                  IconButton(
-                    icon: _buildNotificationIcon(context),
-                    onPressed: () {
-                      Provider.of<StepTracker>(context, listen: false).clearNewDayFlag();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Notifications cleared')),
-                      );
-                    },
-                  ),
-
-                  // Centered Title
-                  Expanded(
-                    child: Center(
-                      child: Text(
-                        'Hello Asif',
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black87,
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  // Profile Icon
-                  GestureDetector(
-                    onTap: () {
-                      // Optional: Navigate to profile
-                    },
-                    child: const CircleAvatar(
-                      radius: 18,
-                      backgroundImage: AssetImage('assets/profile.png'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            const CustomTopBar(),
 
             // 🔻 Page Content (Selected Tab)
             Expanded(
@@ -146,29 +103,6 @@ class _BottomnavigationState extends State<Bottomnavigation> {
           ],
         ),
       ),
-    );
-  }
-
-  /// Builds the notification icon with badge.
-  Widget _buildNotificationIcon(BuildContext context) {
-    final stepTracker = Provider.of<StepTracker>(context);
-    return Stack(
-      children: [
-        const Icon(Icons.notifications, size: 28),
-        if (stepTracker.isNewDay)
-          Positioned(
-            right: 0,
-            top: 0,
-            child: Container(
-              width: 10,
-              height: 10,
-              decoration: const BoxDecoration(
-                color: Colors.red,
-                shape: BoxShape.circle,
-              ),
-            ),
-          ),
-      ],
     );
   }
 }
