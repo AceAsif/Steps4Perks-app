@@ -12,6 +12,10 @@ class StepTracker with ChangeNotifier {
   int _totalPoints = 0;
   int get totalPoints => _totalPoints;
 
+  //These are for the notifications to show that the steps will reset.
+  bool _isNewDay = false;
+  bool get isNewDay => _isNewDay;
+
   Stream<StepCount>? _stepCountStream;
 
   static const int stepsPerPoint = 100;
@@ -71,11 +75,20 @@ class StepTracker with ChangeNotifier {
     final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
 
     if (lastDate != today) {
+      _isNewDay = true;
       _baseSteps = -1;
       prefs.setInt('dailySteps', 0);
+      prefs.setString('lastResetDate', today);
     } else {
+      _isNewDay = false;
       _baseSteps = prefs.getInt('baseSteps') ?? 0;
     }
+  }
+
+  //Notify the user that the steps will reset.
+  void clearNewDayFlag() {
+    _isNewDay = false;
+    notifyListeners();
   }
 
   Future<void> _loadPoints() async {
@@ -132,3 +145,4 @@ class StepTracker with ChangeNotifier {
     debugPrint("Pedometer error: $error");
   }
 }
+

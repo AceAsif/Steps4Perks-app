@@ -34,9 +34,8 @@ class HomePageContentState extends State<HomePageContent> {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               _buildGauge(screenWidth, screenHeight, currentSteps),
-              //_buildStepCountText(screenWidth, currentSteps),
               _buildSummaryCards(currentSteps),
-              /*
+              
               //TODO: Remove later
               //To mock the steps with button.
               ElevatedButton(
@@ -55,7 +54,7 @@ class HomePageContentState extends State<HomePageContent> {
                 ),
                 child: const Text('➕ Add 500 Mock Steps'),
               ),
-*/
+
               SizedBox(height: screenHeight * 0.03),
               _buildRedeemButton(screenWidth),
               SizedBox(height: screenHeight * 0.03),
