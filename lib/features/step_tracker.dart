@@ -15,8 +15,10 @@ class StepTracker with ChangeNotifier {
   Stream<StepCount>? _stepCountStream;
 
   static const int stepsPerPoint = 100;
-  static const int maxDailySteps = 10000;
-  static const int maxDailyPoints = 100;
+  // static const int maxDailySteps = 10000;
+  static const int maxDailySteps = 100000;
+  // static const int maxDailyPoints = 100;
+  static const int maxDailyPoints = 100000;
   static const int giftCardThreshold = 2500;
 
   StepTracker() {
@@ -43,6 +45,29 @@ class StepTracker with ChangeNotifier {
       cancelOnError: true,
     );
   }
+
+  //TODO: Remove later
+  //To mock the steps with button.
+  void addMockSteps(int stepsToAdd) async {
+    _currentSteps += stepsToAdd;
+
+    final prefs = await SharedPreferences.getInstance();
+    final storedSteps = prefs.getInt('dailySteps') ?? 0;
+
+    final oldPoints = (storedSteps.clamp(0, maxDailySteps)) ~/ stepsPerPoint;
+    // final newPoints = (_currentSteps.clamp(0, maxDailySteps)) ~/ stepsPerPoint;
+    final newPoints = (_currentSteps) ~/ stepsPerPoint;
+
+    if (newPoints > oldPoints) {
+      final gained = newPoints - oldPoints;
+      _totalPoints += gained;
+      prefs.setInt('totalPoints', _totalPoints);
+      prefs.setInt('dailySteps', _currentSteps);
+    }
+
+    notifyListeners();
+  }
+  //-----TODO: Remove later ends--------
 
   Future<void> _loadBaseline() async {
     final prefs = await SharedPreferences.getInstance();

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:myapp/features/giftcard.dart'; // This calls the giftcard.dart file to use the gift card.
 import 'package:myapp/features/stepbooster.dart'; // This calls the stepbooster.dart file to use the step booster.
 import 'package:myapp/features/step_tracker.dart';
+import 'package:myapp/view/rewardshistory.dart';
 
 class RewardsPage extends StatefulWidget {
   const RewardsPage({super.key});
@@ -79,9 +80,7 @@ class RewardsPageState extends State<RewardsPage> {
                           progressValue: totalPoints / 2500,
                           isClaimable: totalPoints >= 2500,
                           onClaimPressed: () {
-                            setState(() {
-                              totalPoints -= 2500;
-                            });
+                            tracker.redeemGiftCard(); // Deduct 2500 points
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
                                 content: Text('Gift card claimed!'),
@@ -96,7 +95,8 @@ class RewardsPageState extends State<RewardsPage> {
                         ), // Now included from stepbooster.dart
                       ],
                     )
-                    : const Center(child: Text("History Rewards List")),
+                    : const RewardHistoryPage(),
+            // const Center(child: Text("History Rewards List")),
           ),
         ],
       ),
