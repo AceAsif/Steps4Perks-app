@@ -36,6 +36,26 @@ class HomePageContentState extends State<HomePageContent> {
               _buildGauge(screenWidth, screenHeight, currentSteps),
               //_buildStepCountText(screenWidth, currentSteps),
               _buildSummaryCards(currentSteps),
+              /*
+              //TODO: Remove later
+              //To mock the steps with button.
+              ElevatedButton(
+                onPressed: () {
+                  Provider.of<StepTracker>(
+                    context,
+                    listen: false,
+                  ).addMockSteps(10000);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.grey.shade300,
+                  foregroundColor: Colors.black,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text('➕ Add 500 Mock Steps'),
+              ),
+*/
               SizedBox(height: screenHeight * 0.03),
               _buildRedeemButton(screenWidth),
               SizedBox(height: screenHeight * 0.03),
@@ -109,7 +129,7 @@ class HomePageContentState extends State<HomePageContent> {
         Expanded(
           child: _buildCard(
             label: 'Points Earned',
-            value: '${(currentSteps / 100).floor()} / 250',
+            value: '${(currentSteps / 100).floor()} / 100',
             showFireIcon: false, // No fire emoji here
           ),
         ),
@@ -117,13 +137,11 @@ class HomePageContentState extends State<HomePageContent> {
     );
   }
 
-
-
- //This is modifing the cards size.
+  //This is modifing the cards size.
   Widget _buildCard({
-  required String label,
-  required String value,
-  bool showFireIcon = false,
+    required String label,
+    required String value,
+    bool showFireIcon = false,
   }) {
     return Container(
       margin: const EdgeInsets.only(top: 8),
@@ -175,8 +193,6 @@ class HomePageContentState extends State<HomePageContent> {
       ),
     );
   }
-
-
 
   Widget _buildRedeemButton(double screenWidth) {
     return SizedBox(
