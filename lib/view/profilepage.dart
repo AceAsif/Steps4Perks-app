@@ -148,13 +148,19 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
               child: Text('Log Out', style: TextStyle(fontSize: screenWidth * 0.045)),
             ),
 
-            // Debug Test Button (Only shows in debug mode)
-            if (kDebugMode) ...[
-              const SizedBox(height: 30),
-              const Divider(thickness: 1),
-              const Text('🐞 Debug Tools', style: TextStyle(fontWeight: FontWeight.bold)),
-              _buildTestNotificationButton(screenHeight, screenWidth),
-            ],
+            // 👇 Immediate Notification Button (Always Visible)
+            ElevatedButton(
+              onPressed: () async {
+                await NotificationService().showImmediateNotification();
+                debugPrint('Immediate test notification sent.');
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Immediate test notification sent!')),
+                  );
+                }
+              },
+              child: const Text('🚀 Send Immediate Notification'),
+            ),
           ],
         ),
       ),
