@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
@@ -47,7 +48,8 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
 
     setState(() {
       _notificationsEnabled = status.isGranted;
-      _isPermissionPermanentlyDenied = status.isPermanentlyDenied || status.isRestricted;
+      _isPermissionPermanentlyDenied =
+          status.isPermanentlyDenied || status.isRestricted;
     });
   }
 
@@ -55,9 +57,10 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
     if (newValue) {
       final accepted = await showNotificationRationaleDialog(context);
       if (accepted == true) {
-        final granted = await NotificationService().requestNotificationPermissions();
+        final granted =
+            await NotificationService().requestNotificationPermissions();
         if (granted) {
-          debugPrint("Notifications enabled!");
+          debugPrint("✅ Notifications enabled.");
           await _checkNotificationStatus();
           await NotificationService().scheduleDailyReminderOnce(hour: 10, minute: 0);
           await NotificationService().scheduleNotification(
@@ -75,7 +78,7 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
             minute: 30,
           );
         } else {
-          debugPrint("Notifications denied by system.");
+          debugPrint("❌ Notifications denied by system.");
           await _checkNotificationStatus();
         }
       } else {
@@ -98,6 +101,7 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
         padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.07, vertical: screenHeight * 0.04),
         child: Column(
           children: [
+            // Profile Section
             CircleAvatar(
               radius: screenWidth * 0.12,
               backgroundImage: const AssetImage('assets/profile.png'),
@@ -129,6 +133,7 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
             OptionTile(icon: Icons.info_outline, label: 'About Steps4Perks', onTap: () {}),
             SizedBox(height: screenHeight * 0.025),
 
+            // Logout Button
             ElevatedButton(
               onPressed: () {},
               style: ElevatedButton.styleFrom(
@@ -142,6 +147,14 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
               ),
               child: Text('Log Out', style: TextStyle(fontSize: screenWidth * 0.045)),
             ),
+
+            // Debug Test Button (Only shows in debug mode)
+            if (kDebugMode) ...[
+              const SizedBox(height: 30),
+              const Divider(thickness: 1),
+              const Text('🐞 Debug Tools', style: TextStyle(fontWeight: FontWeight.bold)),
+              _buildTestNotificationButton(screenHeight, screenWidth),
+            ],
           ],
         ),
       ),
@@ -176,6 +189,42 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
           "Notifications Blocked? Fix in App Settings",
           style: TextStyle(fontSize: screenWidth * 0.04),
         ),
+      ),
+    );
+  }
+
+  Widget _buildTestNotificationButton(double screenHeight, double screenWidth) {
+    return ElevatedButton(
+      onPressed: () async {
+        final now = DateTime.now();
+        final testHour = now.hour;
+        final testMinute = now.minute + 1;
+
+        await NotificationService().scheduleNotification(
+          id: 999,
+          title: '🔔 Test Notification',
+          body: 'This is a test notification to verify functionality.',
+          hour: testHour,
+          minute: testMinute,
+        );
+
+        debugPrint('Test notification scheduled for $testHour:$testMinute');
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Test notification scheduled for $testHour:${testMinute.toString().padLeft(2, '0')}'),
+          ),
+        );
+      },
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.deepPurple,
+        foregroundColor: Colors.white,
+        padding: EdgeInsets.symmetric(vertical: screenHeight * 0.015, horizontal: screenWidth * 0.05),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+      child: Text(
+        '📢 Test Notification',
+        style: TextStyle(fontSize: screenWidth * 0.045),
       ),
     );
   }
