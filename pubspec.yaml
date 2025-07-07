@@ -64,9 +64,12 @@ dependencies:
   flutter_local_notifications: ^19.3.0
   # Provides accurate and efficient time zone conversions and handling.
   timezone: ^0.10.1
+  #TODO: Future feature
   # This plugin provides unified access to health and fitness data 
   # from platforms like Apple HealthKit and Android Google Fit.
   #health: ^13.1.1
+  # A Flutter plugin for accessing device information.
+  device_info_plus: ^11.5.0
 
 
 dev_dependencies:

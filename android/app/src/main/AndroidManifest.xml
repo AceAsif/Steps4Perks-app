@@ -2,7 +2,8 @@
 
     <!-- Add this permission line below -->
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
-
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    
     <application
         android:label="Steps4Perks"
         android:name="${applicationName}"
