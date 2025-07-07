@@ -46,10 +46,10 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
       status = PermissionStatus.denied;
     }
 
+    if (!mounted) return; // ✅ Fixes async BuildContext warning
     setState(() {
       _notificationsEnabled = status.isGranted;
-      _isPermissionPermanentlyDenied =
-          status.isPermanentlyDenied || status.isRestricted;
+      _isPermissionPermanentlyDenied = status.isPermanentlyDenied || status.isRestricted;
     });
   }
 
@@ -57,31 +57,17 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
     if (newValue) {
       final accepted = await showNotificationRationaleDialog(context);
       if (accepted == true) {
-        final granted =
-            await NotificationService().requestNotificationPermissions();
+        final granted = await NotificationService().requestNotificationPermissions();
         if (granted) {
           debugPrint("✅ Notifications enabled.");
           await _checkNotificationStatus();
           await NotificationService().scheduleDailyReminderOnce(hour: 10, minute: 0);
-          await NotificationService().scheduleNotification(
-            id: 1,
-            title: '🌞 Morning Walk',
-            body: 'Start your day with a refreshing walk!',
-            hour: 7,
-            minute: 30,
-          );
-          await NotificationService().scheduleNotification(
-            id: 2,
-            title: '🍱 Lunch Walk',
-            body: 'Stretch your legs after lunch.',
-            hour: 12,
-            minute: 30,
-          );
         } else {
-          debugPrint("❌ Notifications denied by system.");
+          debugPrint("❌ Notifications denied.");
           await _checkNotificationStatus();
         }
       } else {
+        if (!mounted) return;
         setState(() => _notificationsEnabled = false);
       }
     } else {
@@ -101,7 +87,7 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
         padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.07, vertical: screenHeight * 0.04),
         child: Column(
           children: [
-            // Profile Section
+            // Profile Header
             CircleAvatar(
               radius: screenWidth * 0.12,
               backgroundImage: const AssetImage('assets/profile.png'),
@@ -133,33 +119,64 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
             OptionTile(icon: Icons.info_outline, label: 'About Steps4Perks', onTap: () {}),
             SizedBox(height: screenHeight * 0.025),
 
-            // Logout Button
-            ElevatedButton(
-              onPressed: () {},
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.black,
-                foregroundColor: Colors.white,
-                padding: EdgeInsets.symmetric(
-                  vertical: screenHeight * 0.015,
-                  horizontal: screenWidth * 0.05,
-                ),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            // Logout & Reminder Buttons (Modern Look + Safe Spacing)
+            Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).padding.bottom + 24, // Space above nav bar
+                top: 24, // Space above reminder button
               ),
-              child: Text('Log Out', style: TextStyle(fontSize: screenWidth * 0.045)),
-            ),
-
-            // 👇 Immediate Notification Button (Always Visible)
-            ElevatedButton(
-              onPressed: () async {
-                await NotificationService().showImmediateNotification();
-                debugPrint('Immediate test notification sent.');
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Immediate test notification sent!')),
-                  );
-                }
-              },
-              child: const Text('🚀 Send Immediate Notification'),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ElevatedButton(
+                    onPressed: () {
+                      // Add logout logic here
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.black,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 32),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    child: const Text('Log Out'),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      final time = await showTimePicker(
+                        context: context,
+                        initialTime: TimeOfDay.now(),
+                      );
+                      if (time != null && mounted) {
+                        await NotificationService().scheduleNotification(
+                          id: 999,
+                          title: '🔔 Custom Reminder',
+                          body: 'It’s time for your custom walk!',
+                          hour: time.hour,
+                          minute: time.minute,
+                        );
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Reminder set for ${time.format(context)}')),
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.access_time),
+                    label: const Text("Set Custom Reminder"),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.deepPurple,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                      elevation: 4,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -195,42 +212,6 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
           "Notifications Blocked? Fix in App Settings",
           style: TextStyle(fontSize: screenWidth * 0.04),
         ),
-      ),
-    );
-  }
-
-  Widget _buildTestNotificationButton(double screenHeight, double screenWidth) {
-    return ElevatedButton(
-      onPressed: () async {
-        final now = DateTime.now();
-        final testHour = now.hour;
-        final testMinute = now.minute + 1;
-
-        await NotificationService().scheduleNotification(
-          id: 999,
-          title: '🔔 Test Notification',
-          body: 'This is a test notification to verify functionality.',
-          hour: testHour,
-          minute: testMinute,
-        );
-
-        debugPrint('Test notification scheduled for $testHour:$testMinute');
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Test notification scheduled for $testHour:${testMinute.toString().padLeft(2, '0')}'),
-          ),
-        );
-      },
-      style: ElevatedButton.styleFrom(
-        backgroundColor: Colors.deepPurple,
-        foregroundColor: Colors.white,
-        padding: EdgeInsets.symmetric(vertical: screenHeight * 0.015, horizontal: screenWidth * 0.05),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ),
-      child: Text(
-        '📢 Test Notification',
-        style: TextStyle(fontSize: screenWidth * 0.045),
       ),
     );
   }
