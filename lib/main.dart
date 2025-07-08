@@ -9,9 +9,8 @@ import 'package:timezone/data/latest.dart' as tz;       // Required for timezone
 // Instantiate your NotificationService globally for easy access
 final NotificationService notificationService = NotificationService();
 
-// IMPORTANT: The setupNotifications() function has been removed from here.
-// Notification scheduling will now be handled within the UI (e.g., ProfilePage)
-// after the user explicitly grants notification permissions.
+// You can put general comments about the app here at the file level
+// or as a doc comment for the main function or MyApp class.
 
 void main() async {
   // Ensure Flutter widgets binding is initialized before any Flutter-specific calls
@@ -30,9 +29,8 @@ void main() async {
       child: const MyApp(),
     ),
   );
-
- /// App entry point for Steps4Perks
-  /// Notifications will be scheduled later after permissions are granted.
+  // Any code here after runApp() would typically not execute or cause issues.
+  // Notifications will be scheduled later after permissions are granted.
 }
 
 class MyApp extends StatelessWidget {
