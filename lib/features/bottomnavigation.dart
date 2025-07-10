@@ -16,7 +16,7 @@ class Bottomnavigation extends StatefulWidget {
 }
 
 class _BottomnavigationState extends State<Bottomnavigation> {
-  int _selectedIndex = 0;
+  int _selectedIndex = 0; // Tracks the currently selected tab
 
   /// List of all pages in the app
   static final List<Widget> _pages = [
@@ -26,67 +26,85 @@ class _BottomnavigationState extends State<Bottomnavigation> {
     const ProfilePageContent(),
   ];
 
-  /// Switch tabs on tap
+  /// Called when a tab is selected from BottomNavigationBar
   void _onItemTapped(int index) {
     setState(() => _selectedIndex = index);
   }
 
-  /// Whether to show top bar (hidden on Profile page)
+  /// Determines if the custom top bar should be shown (hides on Profile Page)
   bool get _shouldShowTopBar => _selectedIndex != 3;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      extendBody: true, // ✅ Important for floating effect
-      body: Stack(
-        children: [
-          // Main Content + Top Bar
-          Column(
-            children: [
-              if (_shouldShowTopBar) const CustomTopBar(),
-              Expanded(child: _pages[_selectedIndex]),
+      extendBodyBehindAppBar: false, // ✅ Important: No overlapping under status bar
+      body: SafeArea(
+        // ✅ Automatically avoids notch & gesture bars
+        child: Column(
+          children: [
+            // Show Top Bar on all tabs except Profile Page
+            if (_shouldShowTopBar) const CustomTopBar(),
+
+            // Main Page Content (depends on selected tab)
+            Expanded(
+              child: _pages[_selectedIndex],
+            ),
+
+            // Custom Bottom Navigation Bar (always floating safely)
+            _buildBottomNavigationBar(context),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Builds the bottom navigation bar with rounded floating design
+  Widget _buildBottomNavigationBar(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(30.0),
+          boxShadow: [
+            BoxShadow(
+              color: const Color.fromRGBO(0, 0, 0, 0.1),
+              spreadRadius: 2,
+              blurRadius: 10,
+              offset: const Offset(0, 5),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(30.0),
+          child: BottomNavigationBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            type: BottomNavigationBarType.fixed,
+            currentIndex: _selectedIndex,
+            selectedItemColor: Colors.deepPurple,
+            unselectedItemColor: Colors.grey,
+            onTap: _onItemTapped,
+            items: const [
+              BottomNavigationBarItem(
+                icon: Icon(Icons.home),
+                label: 'Home',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.directions_run),
+                label: 'Activity',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.card_giftcard),
+                label: 'Rewards',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.person),
+                label: 'Profile',
+              ),
             ],
           ),
-
-          // Floating Bottom Navigation Bar
-          Positioned(
-            left: 16,
-            right: 16,
-            bottom: 16,
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(30.0),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color.fromRGBO(0, 0, 0, 0.1),
-                    spreadRadius: 2,
-                    blurRadius: 10,
-                    offset: const Offset(0, 5),
-                  ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(30.0),
-                child: BottomNavigationBar(
-                  backgroundColor: Colors.transparent,
-                  elevation: 0,
-                  type: BottomNavigationBarType.fixed,
-                  currentIndex: _selectedIndex,
-                  selectedItemColor: Colors.deepPurple,
-                  unselectedItemColor: Colors.grey,
-                  onTap: _onItemTapped,
-                  items: const [
-                    BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-                    BottomNavigationBarItem(icon: Icon(Icons.directions_run), label: 'Activity'),
-                    BottomNavigationBarItem(icon: Icon(Icons.card_giftcard), label: 'Rewards'),
-                    BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
