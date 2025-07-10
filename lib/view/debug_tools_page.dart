@@ -35,15 +35,17 @@ class _DebugToolsPageState extends State<DebugToolsPage> {
     final screenHeight = MediaQuery.of(context).size.height;
 
     return Scaffold(
+      // --- FIX: Set a solid background color for the Scaffold ---
+      backgroundColor: Colors.grey[900], // A dark background for the entire page
       appBar: AppBar(
         title: const Text(
           '🐞 Debug Tools',
           style: TextStyle(color: Colors.white), // Explicitly set title color to white
         ),
-        backgroundColor: Colors.deepOrange, // A distinct color for debug page
+        backgroundColor: Colors.deepOrange, // A distinct color for debug page's AppBar
         iconTheme: const IconThemeData(color: Colors.white), // Ensure back button/other icons are white
-        // --- NEW: Control System UI Overlay Style for this dark AppBar ---
-        systemOverlayStyle: SystemUiOverlayStyle(
+        // --- System UI Overlay Style for this dark AppBar and page ---
+        systemOverlayStyle: const SystemUiOverlayStyle(
           statusBarIconBrightness: Brightness.light, // For Android: Light icons (white)
           statusBarBrightness: Brightness.dark,     // For iOS: Light text (white)
           statusBarColor: Colors.deepOrange,        // Match AppBar color for a solid look behind status bar
@@ -71,15 +73,14 @@ class _DebugToolsPageState extends State<DebugToolsPage> {
                   minute: testMinute,
                 );
 
-                // FIX: Add the mounted check before using context
-                if (!mounted) return; // If the widget is no longer in the tree, stop here
-
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Test notification scheduled at ${nextHour.toString().padLeft(2, '0')}:${testMinute.toString().padLeft(2, '0')}'),
-                    duration: const Duration(seconds: 3),
-                  ),
-                );
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Test notification scheduled at ${nextHour.toString().padLeft(2, '0')}:${testMinute.toString().padLeft(2, '0')}'),
+                      duration: const Duration(seconds: 3),
+                    ),
+                  );
+                }
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.deepPurple,
@@ -93,8 +94,7 @@ class _DebugToolsPageState extends State<DebugToolsPage> {
               onPressed: () async {
                 await NotificationService().resetDailyReminderFlag();
 
-                // FIX: Add the mounted check before using context
-                if (!mounted) return; // If the widget is no longer in the tree, stop here
+                if (!mounted) return;
 
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
@@ -124,7 +124,7 @@ class _DebugToolsPageState extends State<DebugToolsPage> {
             ElevatedButton(
               onPressed: _runSynchronousTask,
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red[700], // Red for blocking operations
+                backgroundColor: Colors.red[700],
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 15),
               ),
@@ -139,7 +139,7 @@ class _DebugToolsPageState extends State<DebugToolsPage> {
             ElevatedButton(
               onPressed: _runAsyncTask,
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green[700], // Green for non-blocking
+                backgroundColor: Colors.green[700],
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 15),
               ),
@@ -189,17 +189,14 @@ class _DebugToolsPageState extends State<DebugToolsPage> {
   /// Simulates a blocking synchronous task on the main thread.
   /// This will cause UI jank if it runs for too long.
   void _runSynchronousTask() {
-    final stopwatch = Stopwatch()..start(); // Start timing
+    final stopwatch = Stopwatch()..start();
     debugPrint('Synchronous task started...');
 
-    // Simulate heavy computation by looping many times
-    for (int i = 0; i < 500000000; i++) {
-      // This loop runs on the main thread and blocks it
-    }
+    for (int i = 0; i < 500000000; i++) {}
 
-    stopwatch.stop(); // Stop timing
+    stopwatch.stop();
     debugPrint('Synchronous task finished in ${stopwatch.elapsedMilliseconds} ms');
-    // FIX: Add mounted check before setState and ScaffoldMessenger
+
     if (!mounted) return;
     setState(() {
       _syncTaskTime = '${stopwatch.elapsedMilliseconds} ms';
@@ -212,15 +209,14 @@ class _DebugToolsPageState extends State<DebugToolsPage> {
   /// Simulates an asynchronous, non-blocking task.
   /// This will not cause UI jank as it yields control to the event loop.
   Future<void> _runAsyncTask() async {
-    final stopwatch = Stopwatch()..start(); // Start timing
+    final stopwatch = Stopwatch()..start();
     debugPrint('Asynchronous task started...');
 
-    // Simulate work that doesn't block the main thread (e.g., network call, file I/O)
-    await Future.delayed(const Duration(milliseconds: 500)); // Simulate 500ms async work
+    await Future.delayed(const Duration(milliseconds: 500));
 
-    stopwatch.stop(); // Stop timing
+    stopwatch.stop();
     debugPrint('Asynchronous task finished in ${stopwatch.elapsedMilliseconds} ms');
-    // FIX: Add mounted check before setState and ScaffoldMessenger
+
     if (!mounted) return;
     setState(() {
       _asyncTaskTime = '${stopwatch.elapsedMilliseconds} ms';
