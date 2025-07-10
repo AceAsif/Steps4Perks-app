@@ -4,8 +4,7 @@ import 'package:myapp/features/bottomnavigation.dart'; // Your main navigation w
 import 'package:myapp/features/step_tracker.dart'; // Your StepTracker provider
 import 'package:myapp/theme/app_theme.dart'; // Your app's theme
 import 'package:myapp/services/notification_service.dart'; // Your NotificationService
-import 'package:timezone/data/latest.dart'
-    as tz; // Required for timezone initialization
+import 'package:timezone/data/latest.dart' as tz; // Required for timezone initialization
 import 'package:timezone/timezone.dart' as tz;
 
 // IMPORTANT: Import flutter_local_notifications for NotificationResponse type
