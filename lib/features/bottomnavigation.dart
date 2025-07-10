@@ -1,10 +1,11 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart'; // Required for kDebugMode
 
 // Import your main app views
 import 'package:myapp/view/homepage.dart';
-import 'package:myapp/view/rewardspage.dart';
 import 'package:myapp/view/activitypage.dart';
+import 'package:myapp/view/rewardspage.dart';
 import 'package:myapp/view/profilepage.dart';
 
 // Import your custom widgets
@@ -17,7 +18,6 @@ import 'package:myapp/view/debug_tools_page.dart';
 /// It dynamically includes a 'Debug' tab when the app is in debug mode.
 class Bottomnavigation extends StatefulWidget {
   const Bottomnavigation({super.key, required this.title});
-
   final String title;
 
   @override
@@ -99,6 +99,7 @@ class _BottomnavigationState extends State<Bottomnavigation> {
       // Allows the body content to extend behind the AppBar, useful for transparent AppBars.
       extendBodyBehindAppBar: true,
       body: SafeArea(
+        bottom: false,
         child: Column(
           children: [
             // Conditionally show the CustomTopBar based on the selected tab.
@@ -119,6 +120,8 @@ class _BottomnavigationState extends State<Bottomnavigation> {
           ],
         ),
       ),
+
+      bottomNavigationBar: _buildBlurredNavigationBar(),
     );
   }
 
