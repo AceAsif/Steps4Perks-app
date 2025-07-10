@@ -65,6 +65,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Steps4Perks',
       debugShowCheckedModeBanner: false,
+      showPerformanceOverlay: true, //for debugging purpose
       theme: AppTheme.lightTheme, // Apply your app's theme
       home: const Bottomnavigation(
         title: 'Steps4Perks',
