@@ -56,8 +56,7 @@ class _DebugToolsPageState extends State<DebugToolsPage> {
                   minute: testMinute,
                 );
 
-                // FIX: Add the mounted check before using context
-                if (context.mounted){
+                if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text('Test notification scheduled at ${nextHour.toString().padLeft(2, '0')}:${testMinute.toString().padLeft(2, '0')}'),
@@ -65,7 +64,6 @@ class _DebugToolsPageState extends State<DebugToolsPage> {
                     ),
                   );
                 }
-
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.deepPurple,
@@ -78,9 +76,7 @@ class _DebugToolsPageState extends State<DebugToolsPage> {
             ElevatedButton(
               onPressed: () async {
                 await NotificationService().resetDailyReminderFlag();
-
-                // FIX: Add the mounted check before using context
-                if (context.mounted){
+                if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text('Daily Reminder Flag Reset'),
@@ -88,7 +84,6 @@ class _DebugToolsPageState extends State<DebugToolsPage> {
                     ),
                   );
                 }
-                
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.orange,
@@ -104,13 +99,11 @@ class _DebugToolsPageState extends State<DebugToolsPage> {
             const SizedBox(height: 20),
             Text(
               'Synchronous Task Time: $_syncTaskTime',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black),
             ),
             const SizedBox(height: 10),
             ElevatedButton(
-              onPressed: () {
-                _runSynchronousTask();
-              },
+              onPressed: _runSynchronousTask,
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.red[700],
                 foregroundColor: Colors.white,
@@ -121,13 +114,11 @@ class _DebugToolsPageState extends State<DebugToolsPage> {
             const SizedBox(height: 20),
             Text(
               'Asynchronous Task Time: $_asyncTaskTime',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black),
             ),
             const SizedBox(height: 10),
             ElevatedButton(
-              onPressed: () async {
-                await _runAsyncTask();
-              },
+              onPressed: _runAsyncTask,
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green[700],
                 foregroundColor: Colors.white,
@@ -141,17 +132,17 @@ class _DebugToolsPageState extends State<DebugToolsPage> {
             const SizedBox(height: 10),
             const Text(
               'If your app feels slow or "janky" (stutters), it means the UI thread is overloaded.',
-              style: TextStyle(fontSize: 14, color: Colors.grey),
+              style: TextStyle(fontSize: 14, color: Colors.black87),
             ),
             const SizedBox(height: 10),
             const Text(
               'Look for "Skipped frames!" warnings in your console. For deep analysis, use:',
-              style: TextStyle(fontSize: 14, color: Colors.grey),
+              style: TextStyle(fontSize: 14, color: Colors.black87),
             ),
             const SizedBox(height: 5),
             const Text(
               '1. Flutter DevTools (Performance Tab & CPU Profiler)\n2. `showPerformanceOverlay: true` in MaterialApp',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.black),
             ),
             const SizedBox(height: 20),
           ],
@@ -167,7 +158,7 @@ class _DebugToolsPageState extends State<DebugToolsPage> {
         const Divider(height: 40, thickness: 2, color: Colors.grey),
         Text(
           title,
-          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
+          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black),
         ),
         const Divider(height: 20, thickness: 1, color: Colors.grey),
       ],
@@ -178,13 +169,11 @@ class _DebugToolsPageState extends State<DebugToolsPage> {
     final stopwatch = Stopwatch()..start();
     debugPrint('Synchronous task started...');
 
-    for (int i = 0; i < 500000000; i++) {
-      // Simulate heavy computation
-    }
+    for (int i = 0; i < 500000000; i++) {}
 
     stopwatch.stop();
     debugPrint('Synchronous task finished in ${stopwatch.elapsedMilliseconds} ms');
-    // FIX: Add mounted check before setState and ScaffoldMessenger
+
     if (!mounted) return;
     setState(() {
       _syncTaskTime = '${stopwatch.elapsedMilliseconds} ms';
@@ -202,7 +191,7 @@ class _DebugToolsPageState extends State<DebugToolsPage> {
 
     stopwatch.stop();
     debugPrint('Asynchronous task finished in ${stopwatch.elapsedMilliseconds} ms');
-    // FIX: Add mounted check before setState and ScaffoldMessenger
+
     if (!mounted) return;
     setState(() {
       _asyncTaskTime = '${stopwatch.elapsedMilliseconds} ms';
