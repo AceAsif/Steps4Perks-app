@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1008163722435",
+    "project_id": "steps4perks",
+    "storage_bucket": "steps4perks.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1008163722435:android:1cbbf3cfad92d4c1413e76",
+        "android_client_info": {
+          "package_name": "com.example.myapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBAzzm3qB3DN7vqS9gub3IMxE_O8Sjys8o"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
