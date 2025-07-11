@@ -255,45 +255,4 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
       ),
     );
   }
-
-  Widget _buildTestNotificationButton(double screenHeight, double screenWidth) {
-    return ElevatedButton(
-      onPressed: () async {
-        final now = DateTime.now();
-        final testHour = now.hour;
-        final testMinute = now.minute + 1;
-
-        await NotificationService().scheduleNotification(
-          id: 999,
-          title: '🔔 Test Notification',
-          body: 'This is a test notification to verify functionality.',
-          hour: testHour,
-          minute: testMinute,
-        );
-
-        debugPrint('Test notification scheduled for $testHour:$testMinute');
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Test notification scheduled for $testHour:${testMinute.toString().padLeft(2, '0')}',
-            ),
-          ),
-        );
-      },
-      style: ElevatedButton.styleFrom(
-        backgroundColor: Colors.deepPurple,
-        foregroundColor: Colors.white,
-        padding: EdgeInsets.symmetric(
-          vertical: screenHeight * 0.015,
-          horizontal: screenWidth * 0.05,
-        ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ),
-      child: Text(
-        '📢 Test Notification',
-        style: TextStyle(fontSize: screenWidth * 0.045),
-      ),
-    );
-  }
 }
