@@ -10,11 +10,10 @@ import 'package:timezone/timezone.dart' as tz;
 // IMPORTANT: Import flutter_local_notifications for NotificationResponse type
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
+//Firebase package library
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'dart:convert'; // For jsonDecode
 
 // Instantiate your NotificationService globally for easy access
 final NotificationService notificationService = NotificationService();
@@ -51,7 +50,8 @@ void main() async {
   // Initialize timezone data for flutter_local_notifications' zonedSchedule
   tz.initializeTimeZones();
   tz.setLocalLocation(tz.local);
-
+  
+  // Initialize Firebase with platform-specific default options.
   await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
   );
