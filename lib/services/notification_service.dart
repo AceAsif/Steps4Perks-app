@@ -8,7 +8,6 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
   factory NotificationService() => _instance;
@@ -20,9 +19,14 @@ class NotificationService {
 
   /// Initialize the notification plugin + timezone setup
   Future<void> initialize() async {
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings = AndroidInitializationSettings(
+      '@mipmap/ic_launcher',
+    );
     const iosSettings = DarwinInitializationSettings();
-    const settings = InitializationSettings(android: androidSettings, iOS: iosSettings);
+    const settings = InitializationSettings(
+      android: androidSettings,
+      iOS: iosSettings,
+    );
 
     await _notificationsPlugin.initialize(
       settings,
@@ -31,12 +35,12 @@ class NotificationService {
       },
     );
 
-    tz.initializeTimeZones(); // Required for scheduling with timezones
+    // tz.initializeTimeZones(); // Required for scheduling with timezones
     debugPrint("✅ NotificationService initialized with timezone setup.");
   }
 
   Future<bool> requestNotificationPermissions() async {
-  // For now, only Android 13+ and iOS need permission requests
+    // For now, only Android 13+ and iOS need permission requests
     if (Platform.isAndroid) {
       final androidInfo = await DeviceInfoPlugin().androidInfo;
       if (androidInfo.version.sdkInt >= 33) {
@@ -50,7 +54,6 @@ class NotificationService {
     }
     return false;
   }
-
 
   /// Show an immediate notification (for testing/debugging)
   Future<void> showImmediateNotification() async {
@@ -124,8 +127,14 @@ class NotificationService {
   /// Helper method for calculating next instance of given time (for today or tomorrow)
   tz.TZDateTime _nextInstanceOfTime(int hour, int minute) {
     final now = tz.TZDateTime.now(tz.local);
-    var scheduledDate =
-        tz.TZDateTime(tz.local, now.year, now.month, now.day, hour, minute);
+    var scheduledDate = tz.TZDateTime(
+      tz.local,
+      now.year,
+      now.month,
+      now.day,
+      hour,
+      minute,
+    );
     if (scheduledDate.isBefore(now)) {
       scheduledDate = scheduledDate.add(const Duration(days: 1));
     }

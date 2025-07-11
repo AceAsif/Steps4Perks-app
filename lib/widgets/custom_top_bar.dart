@@ -1,9 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:myapp/features/step_tracker.dart';
+import 'package:myapp/view/debug_tools_page.dart'; // ✅ Import Debug Tools Page
 
-class CustomTopBar extends StatelessWidget {
+class CustomTopBar extends StatefulWidget {
   const CustomTopBar({super.key});
+
+  @override
+  State<CustomTopBar> createState() => _CustomTopBarState();
+}
+
+class _CustomTopBarState extends State<CustomTopBar> {
+  int _tapCount = 0; // ✅ Tap counter for hidden access
 
   @override
   Widget build(BuildContext context) {
@@ -37,10 +45,20 @@ class CustomTopBar extends StatelessWidget {
             ),
           ),
 
-          // Profile Icon
+          // Profile Icon with Hidden Debug Access
           GestureDetector(
             onTap: () {
-              // Optional: Navigate to profile page
+              _tapCount++;
+              if (_tapCount >= 5) {
+                _tapCount = 0; // reset after navigation
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const DebugToolsPage()),
+                );
+                // ✅ Snackbar after entering Debug Tools
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('🐞 Debug Tools Unlocked')),
+                );
+              }
             },
             child: const CircleAvatar(
               radius: 18,
