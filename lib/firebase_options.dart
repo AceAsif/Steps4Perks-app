@@ -70,6 +70,6 @@ class DefaultFirebaseOptions {
     messagingSenderId: '1008163722435',
     projectId: 'steps4perks',
     storageBucket: 'steps4perks.firebasestorage.app',
-    iosBundleId: 'com.example.myapp',
+    iosBundleId: 'com.example.steps4perks',
   );
 }
