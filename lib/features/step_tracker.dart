@@ -19,7 +19,8 @@ class StepTracker with ChangeNotifier {
   static const int stepsPerPoint = 100;
   static const int maxDailySteps = 10000;
   static const int maxDailyPoints = 100; // Max points per day (10000 steps / 100 steps/point)
-  static const int giftCardThreshold = 2500; // Points needed to redeem a gift card
+  // static const int giftCardThreshold = 2500; // Removed: No longer a single threshold for gift card
+  static const int dailyRedemptionCap = 100; // NEW: Max points a user can redeem per day
 
   /// --- State Variables ---
   int _currentSteps = 0; // Steps taken today relative to baseline
@@ -39,6 +40,10 @@ class StepTracker with ChangeNotifier {
   int _currentStreak = 0; // Current consecutive daily goal achievement streak
   String _lastGoalAchievedDate = ''; // Date (YYYY-MM-DD) when the goal was last achieved
 
+  // --- NEW: Daily Redemption State Variables ---
+  int _dailyRedeemedPointsToday = 0; // Points already redeemed today
+  String _lastRedemptionDate = ''; // Date (YYYY-MM-DD) of the last redemption transaction
+
   // --- Service Instances ---
   final DatabaseService _databaseService = DatabaseService();
   User? _currentUser; // Holds the current authenticated Firebase user
@@ -49,6 +54,7 @@ class StepTracker with ChangeNotifier {
   bool get isNewDay => _isNewDay;
   bool get isPedometerAvailable => _isPedometerAvailable;
   int get currentStreak => _currentStreak; // Public getter for streak
+  int get dailyRedeemedPointsToday => _dailyRedeemedPointsToday; // NEW: Getter for points redeemed today
 
   /// Computed daily points (max 100)
   int get dailyPoints {
@@ -57,8 +63,6 @@ class StepTracker with ChangeNotifier {
   }
 
   /// Computed live total points (includes today's yet-unsaved new points)
-  /// This getter calculates total points including any points earned in the
-  /// current session that haven't been persisted to _totalPoints yet.
   int get computedTotalPoints {
     final currentDailyPoints = (_currentSteps.clamp(0, maxDailySteps) ~/ stepsPerPoint).clamp(0, maxDailyPoints);
     final storedDailyPoints = (_storedDailySteps ~/ stepsPerPoint).clamp(0, maxDailyPoints);
@@ -66,15 +70,19 @@ class StepTracker with ChangeNotifier {
     return _totalPoints + (newPointsToday > 0 ? newPointsToday : 0);
   }
 
-  /// Check if user can redeem a gift card
-  bool get canRedeemGiftCard => _totalPoints >= giftCardThreshold;
+  /// NEW: Check if user can redeem points (based on total points and daily cap)
+  bool get canRedeemPoints {
+    final redeemableFromTotal = _totalPoints; // Points user has
+    final remainingDailyCap = dailyRedemptionCap - _dailyRedeemedPointsToday; // Points left in daily cap
+
+    // Can redeem if user has points AND there's space in the daily cap
+    return redeemableFromTotal > 0 && remainingDailyCap > 0;
+  }
 
   /// Constructor
   StepTracker() {
     _init();
     // Listen for Firebase authentication state changes.
-    // This is crucial for loading/syncing user-specific data from Firestore
-    // when a user logs in or out.
     FirebaseAuth.instance.authStateChanges().listen((user) {
       _currentUser = user;
       if (user != null) {
@@ -90,6 +98,8 @@ class StepTracker with ChangeNotifier {
         _isNewDay = false;
         _currentStreak = 0;
         _lastGoalAchievedDate = '';
+        _dailyRedeemedPointsToday = 0; // Reset daily redeemed points
+        _lastRedemptionDate = ''; // Reset last redemption date
         notifyListeners();
       }
     });
@@ -98,17 +108,14 @@ class StepTracker with ChangeNotifier {
   /// Initializes the step tracker: requests permissions, loads local data,
   /// starts pedometer listening, and syncs with Firestore if user is authenticated.
   Future<void> _init() async {
-    // Permission request and pedometer listening should happen regardless of Database data
     await _requestPermission();
-    await _startListening(); // This will set _isPedometerAvailable
+    await _startListening();
 
     // Load initial data from SharedPreferences first for quick UI display.
-    // Firestore streams will then update these values if user is authenticated.
     await _loadBaseline();
     await _loadPoints();
 
-    // If user is already authenticated (e.g., on hot restart or app re-open),
-    // trigger data load/sync from Firestore.
+    // If user is already authenticated, trigger data load/sync from Firestore.
     if (_databaseService.currentUserId != null) {
       await _loadDataFromDatabase();
     }
@@ -116,7 +123,7 @@ class StepTracker with ChangeNotifier {
 
   /// Loads/Syncs user-specific data from Firestore Database.
   /// This method listens to real-time updates from Firestore for total points,
-  /// daily stats, and user profile (for streak data).
+  /// daily stats, and user profile (for streak and redemption data).
   Future<void> _loadDataFromDatabase() async {
     if (_currentUser == null) {
       debugPrint('StepTracker: Cannot load from Database, user not authenticated.');
@@ -125,22 +132,41 @@ class StepTracker with ChangeNotifier {
 
     final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
 
-    // Listen to user profile for total points and streak data
+    // Listen to user profile for total points, streak, and daily redemption data
     _databaseService.getUserProfile().listen((profileData) {
       if (profileData != null) {
         final dbTotalPoints = profileData['totalPoints'] as int? ?? 0;
         final dbCurrentStreak = profileData['currentStreak'] as int? ?? 0;
         final dbLastGoalAchievedDate = profileData['lastGoalAchievedDate'] as String? ?? '';
+        // --- NEW: Load daily redemption fields ---
+        final dbDailyRedeemedPointsToday = profileData['dailyRedeemedPointsToday'] as int? ?? 0;
+        final dbLastRedemptionDate = profileData['lastRedemptionDate'] as String? ?? '';
 
-        if (dbTotalPoints != _totalPoints) {
-          _totalPoints = dbTotalPoints;
-          debugPrint('StepTracker: Loaded total points from Database: $_totalPoints');
-          notifyListeners();
+        bool changed = false;
+        if (dbTotalPoints != _totalPoints) { _totalPoints = dbTotalPoints; changed = true; }
+        if (dbCurrentStreak != _currentStreak) { _currentStreak = dbCurrentStreak; changed = true; }
+        if (dbLastGoalAchievedDate != _lastGoalAchievedDate) { _lastGoalAchievedDate = dbLastGoalAchievedDate; changed = true; }
+
+        // --- NEW: Reset daily redeemed points if it's a new day ---
+        if (dbLastRedemptionDate != today) {
+          // If the last redemption was not today, reset daily redeemed points
+          if (_dailyRedeemedPointsToday != 0 || dbDailyRedeemedPointsToday != 0) {
+            _dailyRedeemedPointsToday = 0;
+            debugPrint('StepTracker: New day detected, daily redeemed points reset to 0.');
+            changed = true;
+          }
+        } else {
+          // If last redemption was today, load the value
+          if (dbDailyRedeemedPointsToday != _dailyRedeemedPointsToday) {
+            _dailyRedeemedPointsToday = dbDailyRedeemedPointsToday;
+            debugPrint('StepTracker: Loaded daily redeemed points from Database: $_dailyRedeemedPointsToday');
+            changed = true;
+          }
         }
-        if (dbCurrentStreak != _currentStreak || dbLastGoalAchievedDate != _lastGoalAchievedDate) {
-          _currentStreak = dbCurrentStreak;
-          _lastGoalAchievedDate = dbLastGoalAchievedDate;
-          debugPrint('StepTracker: Loaded streak from Database: $_currentStreak days, last date: $_lastGoalAchievedDate');
+        _lastRedemptionDate = dbLastRedemptionDate; // Always update last redemption date
+
+        if (changed) {
+          debugPrint('StepTracker: Profile data loaded/synced from Database.');
           notifyListeners();
         }
       } else {
@@ -148,6 +174,8 @@ class StepTracker with ChangeNotifier {
         _totalPoints = 0;
         _currentStreak = 0;
         _lastGoalAchievedDate = '';
+        _dailyRedeemedPointsToday = 0;
+        _lastRedemptionDate = '';
         debugPrint('StepTracker: No user profile data found in Database. Resetting local profile state.');
         notifyListeners();
       }
@@ -157,18 +185,13 @@ class StepTracker with ChangeNotifier {
     _databaseService.getDailyStats(today).listen((dailyStats) {
       if (dailyStats != null) {
         final dbSteps = dailyStats['steps'] as int? ?? 0;
-        // The 'pointsEarnedToday' and 'totalPointsAccumulated' fields are also available in dailyStats
-        // but _totalPoints is already updated by getUserProfile stream.
-
-        // Sync local step state with Database data
         if (dbSteps != _currentSteps || dbSteps != _storedDailySteps) {
           _currentSteps = dbSteps;
-          _storedDailySteps = dbSteps; // Ensure stored matches current from Database
+          _storedDailySteps = dbSteps;
           debugPrint('StepTracker: Loaded daily steps from Database: $_currentSteps');
           notifyListeners();
         }
       } else {
-        // No Database data for today, ensure local daily state is reset for the day
         debugPrint('StepTracker: No Database data for today. Resetting local daily step state.');
         _currentSteps = 0;
         _storedDailySteps = 0;
@@ -184,14 +207,13 @@ class StepTracker with ChangeNotifier {
     final status = await Permission.activityRecognition.request();
     if (status.isPermanentlyDenied) {
       debugPrint('Activity Recognition permission permanently denied. Guiding user to settings.');
-      await openAppSettings(); // Open app settings for user to manually enable permission
+      await openAppSettings();
     }
-    // Set initial availability flag based on permission status
     _isPedometerAvailable = status.isGranted;
     if (!status.isGranted) {
       debugPrint('Activity Recognition permission not granted.');
     }
-    notifyListeners(); // Notify UI about permission status change
+    notifyListeners();
   }
 
   /// Load base steps and daily state from SharedPreferences.
@@ -203,21 +225,19 @@ class StepTracker with ChangeNotifier {
     final lastDate = prefs.getString('lastResetDate') ?? '';
 
     if (lastDate != today) {
-      // It's a new day!
       _isNewDay = true;
-      _baseSteps = -1; // Flag to indicate that _baseSteps needs to be set from the first step event
-      _currentSteps = 0; // Reset current steps displayed for the new day
-      _storedDailySteps = 0; // Reset stored daily steps
-      await prefs.setInt('dailySteps', 0); // Reset daily steps in storage
-      await prefs.setString('lastResetDate', today); // Update last reset date
+      _baseSteps = -1;
+      _currentSteps = 0;
+      _storedDailySteps = 0;
+      await prefs.setInt('dailySteps', 0);
+      await prefs.setString('lastResetDate', today);
     } else {
-      // Same day as last recorded activity
       _isNewDay = false;
-      _baseSteps = prefs.getInt('baseSteps') ?? 0; // Load previous base steps
-      _storedDailySteps = prefs.getInt('dailySteps') ?? 0; // Load previous daily steps
-      _currentSteps = _storedDailySteps; // Set current steps from stored for display
+      _baseSteps = prefs.getInt('baseSteps') ?? 0;
+      _storedDailySteps = prefs.getInt('dailySteps') ?? 0;
+      _currentSteps = _storedDailySteps;
     }
-    notifyListeners(); // Notify UI after loading baseline
+    notifyListeners();
   }
 
   /// Load persisted total points from SharedPreferences.
@@ -225,7 +245,7 @@ class StepTracker with ChangeNotifier {
   Future<void> _loadPoints() async {
     final prefs = await SharedPreferences.getInstance();
     _totalPoints = prefs.getInt('totalPoints') ?? 0;
-    notifyListeners(); // Notify UI after loading points
+    notifyListeners();
   }
 
   /// Resets the [_isNewDay] flag, typically called after the UI has acknowledged the new day.
@@ -238,7 +258,6 @@ class StepTracker with ChangeNotifier {
   /// This method conditionally starts listening based on device type (physical vs. emulator)
   /// and permission status.
   Future<void> _startListening() async {
-    // Determine if the app is running on a physical device or an emulator/simulator.
     bool isPhysicalDevice = true;
     if (Platform.isAndroid) {
       final AndroidDeviceInfo androidInfo = await DeviceInfoPlugin().androidInfo;
@@ -248,15 +267,13 @@ class StepTracker with ChangeNotifier {
       isPhysicalDevice = iosInfo.isPhysicalDevice;
     }
 
-    // If it's an emulator/simulator, set pedometer as unavailable and return.
     if (!isPhysicalDevice) {
       debugPrint('Running on emulator/simulator, pedometer not available.');
       _isPedometerAvailable = false;
       notifyListeners();
-      return; // Stop here if not a physical device
+      return;
     }
 
-    // If it's a physical device, check permission status again before starting streams.
     final status = await Permission.activityRecognition.status;
     if (!status.isGranted) {
       debugPrint('Pedometer cannot start: Activity Recognition permission not granted.');
@@ -265,25 +282,20 @@ class StepTracker with ChangeNotifier {
       return;
     }
 
-    // --- Pedometer Stream Setup (only for physical devices with permission) ---
-
-    // Listen to pedestrian status changes (e.g., walking/standing).
     _pedestrianStatusStream = Pedometer.pedestrianStatusStream;
     _pedestrianStatusStream?.listen(
       _onPedestrianStatusChanged,
       onError: _onPedestrianStatusError,
-      cancelOnError: true, // Automatically stop listening if an error occurs
+      cancelOnError: true,
     );
 
-    // Listen to step count changes.
     _stepCountStream = Pedometer.stepCountStream;
     _stepCountStream?.listen(
       _onStepCount,
       onError: _onStepCountError,
-      cancelOnError: true, // Automatically stop listening if an error occurs
+      cancelOnError: true,
     );
 
-    // If we've reached this point, the pedometer should be available and listening.
     _isPedometerAvailable = true;
     notifyListeners();
   }
@@ -293,28 +305,22 @@ class StepTracker with ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
 
-    // Check if the date has changed since the app last recorded steps.
-    // This handles cases where the app stays open overnight.
     if (prefs.getString('lastResetDate') != today) {
-      await _loadBaseline(); // Trigger a full daily reset if date changed
-      // After _loadBaseline, _baseSteps will be -1, and _currentSteps will be 0.
-      // The next step event will set the new _baseSteps.
+      await _loadBaseline();
     }
 
-    // If _baseSteps is -1, it means this is the first step event after a new day reset.
     if (_baseSteps == -1) {
-      _baseSteps = event.steps; // Set the current event's steps as the new baseline
-      await prefs.setString('lastResetDate', today); // Save current date as last reset date
-      await prefs.setInt('baseSteps', _baseSteps); // Save the new baseline
-      _currentSteps = 0; // Start daily steps from 0 for the new day
+      _baseSteps = event.steps;
+      await prefs.setString('lastResetDate', today);
+      await prefs.setInt('baseSteps', _baseSteps);
+      _currentSteps = 0;
     } else {
-      // Calculate daily steps relative to the baseline.
       _currentSteps = event.steps - _baseSteps;
-      if (_currentSteps < 0) _currentSteps = 0; // Ensure steps don't go negative (can happen with sensor resets)
+      if (_currentSteps < 0) _currentSteps = 0;
     }
 
-    await _updatePointsAndSaveToDatabase(); // Update points and save to Database
-    notifyListeners(); // Notify UI of updated steps and points
+    await _updatePointsAndSaveToDatabase();
+    notifyListeners();
   }
 
   /// Update point state and persist daily steps to SharedPreferences and Database.
@@ -328,11 +334,8 @@ class StepTracker with ChangeNotifier {
     final newPointsFromCurrentSteps = (cappedCurrentSteps ~/ stepsPerPoint).clamp(0, maxDailyPoints);
 
     // --- Daily Goal Achievement Check & Streak Update Logic ---
-    // Check if the daily goal is met (e.g., 10,000 steps)
     if (cappedCurrentSteps >= maxDailySteps) { // Goal met for today
-      // Check if goal was already met today (to avoid incrementing streak multiple times a day)
-      if (_lastGoalAchievedDate != today) {
-        // Check if it's a consecutive day (yesterday was the last goal date)
+      if (_lastGoalAchievedDate != today) { // Check if goal was already met today
         final yesterday = DateFormat('yyyy-MM-dd').format(DateTime.now().subtract(const Duration(days: 1)));
         if (_lastGoalAchievedDate == yesterday) {
           _currentStreak++; // Consecutive day, increment streak
@@ -345,9 +348,9 @@ class StepTracker with ChangeNotifier {
 
         // Save updated streak to Firestore
         if (_currentUser != null) {
-          await _databaseService.saveUserProfile( // Using saveUserProfile to update streak in profile
-            name: _currentUser!.displayName ?? 'User', // Provide current user name
-            email: _currentUser!.email ?? 'no-email@example.com', // Provide current user email
+          await _databaseService.saveUserProfile(
+            name: _currentUser!.displayName ?? 'User',
+            email: _currentUser!.email ?? 'no-email@example.com',
             currentStreak: _currentStreak,
             lastGoalAchievedDate: _lastGoalAchievedDate,
           );
@@ -355,16 +358,13 @@ class StepTracker with ChangeNotifier {
       }
     } else {
       // If daily goal is NOT met, and it's a new day since last goal achieved, reset streak.
-      // This handles cases where user misses a day.
       final yesterday = DateFormat('yyyy-MM-dd').format(DateTime.now().subtract(const Duration(days: 1)));
-      // Check if _lastGoalAchievedDate is not empty, not today, and not yesterday.
-      // This means a day was missed between the last goal and today.
       if (_lastGoalAchievedDate != '' && _lastGoalAchievedDate != today && _lastGoalAchievedDate != yesterday) {
         if (_currentStreak > 0) { // Only reset if there was an active streak
           _currentStreak = 0;
           debugPrint('StepTracker: Streak reset to 0 (missed a day).');
           if (_currentUser != null) {
-            await _databaseService.saveUserProfile( // Using saveUserProfile to update streak in profile
+            await _databaseService.saveUserProfile(
               name: _currentUser!.displayName ?? 'User',
               email: _currentUser!.email ?? 'no-email@example.com',
               currentStreak: _currentStreak,
@@ -388,13 +388,11 @@ class StepTracker with ChangeNotifier {
 
       // --- Save to Database ---
       if (_currentUser != null) {
-        // Update total points in user's profile
         await _databaseService.saveUserProfile(
           name: _currentUser!.displayName ?? 'User',
           email: _currentUser!.email ?? 'no-email@example.com',
           totalPoints: _totalPoints,
         );
-        // Update daily stats document
         await _databaseService.updateDailyStats(
           steps: cappedCurrentSteps,
           pointsEarnedToday: newPointsFromCurrentSteps, // Points gained just today
@@ -431,34 +429,61 @@ class StepTracker with ChangeNotifier {
     }
   }
 
-  /// Redeem gift card by deducting the [giftCardThreshold] from total points.
-  @override
-  Future<void> redeemGiftCard() async {
-    if (_totalPoints >= giftCardThreshold) {
-      _totalPoints -= giftCardThreshold; // Deduct points
+  /// NEW: Redeem points based on daily cap.
+  /// This method is called after the user successfully watches an ad.
+  /// Returns the number of points actually redeemed.
+  Future<int> redeemPoints() async { // Changed return type to Future<int>
+    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    int pointsToRedeem = 0;
+
+    // Reset daily redeemed points if it's a new day since last redemption
+    if (_lastRedemptionDate != today) {
+      _dailyRedeemedPointsToday = 0;
+      debugPrint('StepTracker: New day for redemption, daily cap reset.');
+    }
+
+    // Calculate how many points can be redeemed in this transaction
+    final availablePoints = _totalPoints;
+    final remainingDailyCap = dailyRedemptionCap - _dailyRedeemedPointsToday;
+
+    pointsToRedeem = availablePoints.clamp(0, remainingDailyCap); // Clamp to ensure not negative or over cap
+
+    if (pointsToRedeem > 0) {
+      _totalPoints -= pointsToRedeem; // Deduct from total points
+      _dailyRedeemedPointsToday += pointsToRedeem; // Add to today's redeemed count
+      _lastRedemptionDate = today; // Update last redemption date to today
 
       // --- Save to SharedPreferences ---
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('totalPoints', _totalPoints);
+      // Save daily redemption status to SharedPreferences as well for quick local consistency
+      await prefs.setInt('dailyRedeemedPointsToday', _dailyRedeemedPointsToday);
+      await prefs.setString('lastRedemptionDate', _lastRedemptionDate);
 
       // --- Save to Database ---
       if (_currentUser != null) {
-        // Update total points in user's profile after redemption
+        // Update total points and daily redemption status in user's profile
         await _databaseService.saveUserProfile(
           name: _currentUser!.displayName ?? 'User',
           email: _currentUser!.email ?? 'no-email@example.com',
           totalPoints: _totalPoints,
+          dailyRedeemedPointsToday: _dailyRedeemedPointsToday,
+          lastRedemptionDate: _lastRedemptionDate,
         );
-        // Add redeemed reward record to Database
+        // Add a record of this specific redemption transaction
         await _databaseService.addRedeemedReward(
-          rewardType: 'Woolworths \$50 Gift Card', // Example reward
-          value: 50.0,
-          status: 'pending', // Initial status (e.g., waiting for fulfillment)
+          rewardType: 'Points Redemption', // Generic type for daily point redemption
+          value: pointsToRedeem.toDouble(), // Store the actual points redeemed
+          status: 'fulfilled', // Assume immediate fulfillment for points
+          giftCardCode: 'N/A', // No specific gift card code for small point redemptions
         );
       }
-
-      notifyListeners();
+      debugPrint('StepTracker: Redeemed $pointsToRedeem points. Total remaining: $_totalPoints, Daily redeemed: $_dailyRedeemedPointsToday');
+      notifyListeners(); // Notify UI of changes
+    } else {
+      debugPrint('StepTracker: No points available to redeem or daily cap reached.');
     }
+    return pointsToRedeem;
   }
 
   /// Handle pedometer errors from the step count stream.

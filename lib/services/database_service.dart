@@ -1,5 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // To get the current user's UID
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart'; // For debugPrint
 import 'package:intl/intl.dart'; // For DateFormat
 
@@ -25,14 +25,14 @@ class DatabaseService {
   String? get currentUserId => _auth.currentUser?.uid;
 
   // --- Common Firestore Collection Paths ---
-  // FIX: _userDoc returns a DocumentReference to the user's specific document.
-  // This is the correct pattern to then access sub-collections like 'profiles', 'daily_stats', etc.
+  // All user-specific data is nested under: /artifacts/{appId}/users/{userId}/
   DocumentReference _userDoc(String userId) {
     return _db.collection('artifacts').doc(_appId).collection('users').doc(userId);
   }
 
   // --- User Profile & Total Points ---
-  /// Saves or updates a user's profile information and total points in Firestore.
+  /// Saves or updates a user's profile information, total points, streak,
+  /// and daily redemption status in Firestore.
   /// Data is stored under `/artifacts/{appId}/users/{userId}/profiles/{userId}`.
   Future<void> saveUserProfile({
     required String name,
@@ -40,6 +40,9 @@ class DatabaseService {
     int? totalPoints, // Optional: Update total points as part of profile
     int? currentStreak, // Optional: Update streak as part of profile
     String? lastGoalAchievedDate, // Optional: Update last goal date as part of profile
+    // --- NEW: Daily Redemption Fields ---
+    int? dailyRedeemedPointsToday, // Points redeemed today
+    String? lastRedemptionDate, // Date of last redemption (YYYY-MM-DD)
   }) async {
     final userId = currentUserId;
     if (userId == null) {
@@ -55,8 +58,11 @@ class DatabaseService {
       if (totalPoints != null) data['totalPoints'] = totalPoints;
       if (currentStreak != null) data['currentStreak'] = currentStreak;
       if (lastGoalAchievedDate != null) data['lastGoalAchievedDate'] = lastGoalAchievedDate;
+      // Add new redemption fields if provided
+      if (dailyRedeemedPointsToday != null) data['dailyRedeemedPointsToday'] = dailyRedeemedPointsToday;
+      if (lastRedemptionDate != null) data['lastRedemptionDate'] = lastRedemptionDate;
 
-      // FIX: Call .collection('profiles').doc(userId) on the DocumentReference returned by _userDoc
+
       await _userDoc(userId).collection('profiles').doc(userId).set(
         data,
         SetOptions(merge: true), // Use merge: true to update fields without overwriting the whole document
@@ -75,7 +81,6 @@ class DatabaseService {
       debugPrint('DatabaseService Error: User not authenticated for getting profile.');
       return Stream.value(null); // Return an empty stream if no user
     }
-    // FIX: Call .collection('profiles').doc(userId) on the DocumentReference returned by _userDoc
     return _userDoc(userId)
         .collection('profiles')
         .doc(userId)
@@ -98,7 +103,6 @@ class DatabaseService {
       return;
     }
     try {
-      // FIX: Call .collection('daily_stats').doc(date) on the DocumentReference returned by _userDoc
       await _userDoc(userId).collection('daily_stats').doc(date).set({
         'steps': steps,
         'pointsEarnedToday': pointsEarnedToday,
@@ -118,7 +122,6 @@ class DatabaseService {
       debugPrint('DatabaseService Error: User not authenticated for getting daily stats.');
       return Stream.value(null);
     }
-    // FIX: Call .collection('daily_stats').doc(date) on the DocumentReference returned by _userDoc
     return _userDoc(userId)
         .collection('daily_stats')
         .doc(date)
@@ -133,7 +136,6 @@ class DatabaseService {
       debugPrint('DatabaseService Error: User not authenticated for getting daily stats range.');
       return Stream.value([]);
     }
-    // FIX: Call .collection('daily_stats') on the DocumentReference returned by _userDoc
     return _userDoc(userId)
         .collection('daily_stats')
         .where(FieldPath.documentId, isGreaterThanOrEqualTo: DateFormat('yyyy-MM-dd').format(startDate))
@@ -147,7 +149,7 @@ class DatabaseService {
   /// Stored under `/artifacts/{appId}/users/{userId}/redeemed_rewards`.
   Future<void> addRedeemedReward({
     required String rewardType,
-    required double value,
+    required double value, // This will now be the actual points redeemed
     required String status, // e.g., 'pending', 'fulfilled'
     String? giftCardCode, // Optional: for actual gift card code
   }) async {
@@ -157,15 +159,14 @@ class DatabaseService {
       return;
     }
     try {
-      // FIX: Call .collection('redeemed_rewards') on the DocumentReference returned by _userDoc
       await _userDoc(userId).collection('redeemed_rewards').add({
         'rewardType': rewardType,
-        'value': value,
+        'value': value, // Store the actual points redeemed
         'status': status,
         'giftCardCode': giftCardCode,
         'timestamp': FieldValue.serverTimestamp(),
       });
-      debugPrint('DatabaseService: Redeemed reward added for $userId: $rewardType');
+      debugPrint('DatabaseService: Redeemed reward added for $userId: $rewardType ($value points)');
     } catch (e) {
       debugPrint('DatabaseService Error adding redeemed reward: $e');
     }
@@ -178,7 +179,6 @@ class DatabaseService {
       debugPrint('DatabaseService Error: User not authenticated for getting rewards.');
       return Stream.value([]);
     }
-    // FIX: Call .collection('redeemed_rewards') on the DocumentReference returned by _userDoc
     return _userDoc(userId)
         .collection('redeemed_rewards')
         .orderBy('timestamp', descending: true) // Order by timestamp

@@ -2,9 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:myapp/features/step_gauge.dart'; // Assuming StepGauge is a separate widget for the circular progress
 import 'package:myapp/features/step_tracker.dart';
 import 'package:provider/provider.dart';
-
-// No direct DatabaseService, FirebaseAuth, or CloudFirestore imports needed here,
-// as StepTracker handles them internally.
+import 'package:myapp/services/ad_service.dart'; // Import AdService (now the mocked one)
 
 class HomePageContent extends StatefulWidget {
   const HomePageContent({super.key});
@@ -14,36 +12,53 @@ class HomePageContent extends StatefulWidget {
 }
 
 class HomePageContentState extends State<HomePageContent> {
-  // _oldSteps is used for the TweenAnimationBuilder to animate step changes
   int _oldSteps = 0;
+  final AdService _adService =
+      AdService(); // Get instance of AdService (the mocked one)
+
+  @override
+  void initState() {
+    super.initState();
+    _adService
+        .loadRewardedAd(); // Start loading a mock ad as soon as the page loads
+  }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // This is called when dependencies change (like Provider updates).
-    // We update _oldSteps here to ensure the animation starts from the previous value
-    // when currentSteps changes.
     final stepTracker = Provider.of<StepTracker>(context, listen: false);
-    // Only update _oldSteps if the widget is mounted to prevent errors during dispose
     if (mounted) {
       _oldSteps = stepTracker.currentSteps;
     }
   }
 
   @override
+  void dispose() {
+    _adService.dispose(); // Dispose the mock ad when the widget is disposed
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // Listen to StepTracker for real-time updates to currentSteps, totalPoints, and currentStreak
     final stepTracker = Provider.of<StepTracker>(context);
     final currentSteps = stepTracker.currentSteps;
-    final totalPoints = stepTracker.totalPoints; // Get total points from StepTracker
-    final currentStreak = stepTracker.currentStreak; // Get current streak from StepTracker
+    final totalPoints = stepTracker.totalPoints;
+    final currentStreak = stepTracker.currentStreak;
 
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
 
-    // Determine text colors based on theme (assuming light theme defaults to dark text)
-    final bodyTextColor = Theme.of(context).textTheme.bodyLarge?.color ?? Colors.black;
-    final subtitleColor = Theme.of(context).textTheme.bodyMedium?.color ?? Colors.black87;
+    final bodyTextColor =
+        Theme.of(context).textTheme.bodyLarge?.color ?? Colors.black;
+    final subtitleColor =
+        Theme.of(context).textTheme.bodyMedium?.color ?? Colors.black87;
+
+    // Check if user can redeem points AND if a mock ad is "ready"
+    final bool canActivateRedeemButton =
+        stepTracker.canRedeemPoints && _adService.isAdReady;
+    // Show loading indicator if points are met but mock ad isn't "ready"
+    final bool showAdLoadingIndicator =
+        stepTracker.canRedeemPoints && !_adService.isAdReady;
 
     return SafeArea(
       child: SingleChildScrollView(
@@ -54,28 +69,116 @@ class HomePageContentState extends State<HomePageContent> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // --- Step Gauge (Circular Progress) ---
-            _buildGauge(screenWidth, screenHeight, currentSteps, bodyTextColor, subtitleColor),
-
-            // --- Summary Cards (Daily Streak, Points Earned) ---
-            _buildSummaryCards(stepTracker, bodyTextColor, subtitleColor), // Pass stepTracker and colors
+            _buildGauge(
+              screenWidth,
+              screenHeight,
+              currentSteps,
+              bodyTextColor,
+              subtitleColor,
+            ),
+            _buildSummaryCards(stepTracker, bodyTextColor, subtitleColor),
 
             SizedBox(height: screenHeight * 0.03),
 
             // --- Redeem Points Button ---
-            _buildRedeemButton(screenWidth, stepTracker), // Pass stepTracker to the button builder
+            SizedBox(
+              width: screenWidth * 0.75,
+              child: ElevatedButton(
+                onPressed:
+                    canActivateRedeemButton
+                        ? () async {
+                          debugPrint(
+                            'Redeem button pressed. Showing mock ad...',
+                          );
+                          final bool adWatchedSuccessfully =
+                              await _adService.showRewardedAd(); // Call mock ad
+
+                          if (!mounted) return; // Check mounted after async gap
+
+                          if (adWatchedSuccessfully) {
+                            debugPrint(
+                              'Mock Ad watched successfully! Proceeding with redemption.',
+                            );
+                            final int redeemedAmount =
+                                await stepTracker
+                                    .redeemPoints(); // Call redeemPoints method
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    'Redeemed $redeemedAmount points after "watching" ad!',
+                                  ),
+                                ),
+                              );
+                            }
+                          } else {
+                            debugPrint(
+                              'Mock Ad was not "watched" successfully or "failed". Redemption aborted.',
+                            );
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Mock Ad not completed. Redemption failed.',
+                                  ),
+                                ),
+                              );
+                            }
+                          }
+                        }
+                        : null, // Button is disabled if not enough points OR mock ad not "ready"
+                style: ElevatedButton.styleFrom(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(30),
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  backgroundColor: Colors.deepOrange,
+                  foregroundColor: Colors.white,
+                  elevation: 5,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.card_giftcard, size: 24),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Redeem Points (${stepTracker.totalPoints} / ${StepTracker.dailyRedemptionCap} daily)', // Updated button text
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                    if (showAdLoadingIndicator) // Show loading indicator if mock ad is not "ready"
+                      const Padding(
+                        padding: EdgeInsets.only(left: 8.0),
+                        child: SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
 
             SizedBox(height: screenHeight * 0.03),
 
             // --- Mock Steps Button (for emulator testing) ---
-            // Only show if pedometer is not available (e.g., on emulator)
             if (!stepTracker.isPedometerAvailable)
               Padding(
                 padding: const EdgeInsets.only(top: 20.0),
                 child: ElevatedButton(
                   onPressed: () {
-                    // Add 1000 mock steps
-                    Provider.of<StepTracker>(context, listen: false).addMockSteps(1000);
+                    Provider.of<StepTracker>(
+                      context,
+                      listen: false,
+                    ).addMockSteps(1000);
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('Added 1000 mock steps!')),
                     );
@@ -86,7 +189,10 @@ class HomePageContentState extends State<HomePageContent> {
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 20),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 12,
+                      horizontal: 20,
+                    ),
                   ),
                   child: const Text('➕ Add 1000 Mock Steps (Emulator Only)'),
                 ),
@@ -97,7 +203,6 @@ class HomePageContentState extends State<HomePageContent> {
     );
   }
 
-  /// Builds the circular step gauge with animation.
   Widget _buildGauge(
     double screenWidth,
     double screenHeight,
@@ -110,32 +215,33 @@ class HomePageContentState extends State<HomePageContent> {
       height: screenWidth * 0.65,
       child: TweenAnimationBuilder<double>(
         tween: Tween<double>(
-          begin: _oldSteps.toDouble(), // Animation starts from old steps
-          end: currentSteps.toDouble(), // Animates to current steps
+          begin: _oldSteps.toDouble(),
+          end: currentSteps.toDouble(),
         ),
-        duration: const Duration(milliseconds: 600), // Animation duration
+        duration: const Duration(milliseconds: 600),
         builder: (context, value, child) {
-          // StepGauge widget displays the animated step count
-          return StepGauge(currentSteps: value.toInt()); // StepGauge needs to be updated to use int
+          return StepGauge(currentSteps: value.toInt());
         },
         onEnd: () {
-          // Update _oldSteps to currentSteps after animation ends for the next animation cycle
           _oldSteps = currentSteps;
         },
       ),
     );
   }
 
-  /// Builds the row of summary cards (Daily Streak, Points Earned).
-  Widget _buildSummaryCards(StepTracker stepTracker, Color bodyTextColor, Color subtitleColor) {
+  Widget _buildSummaryCards(
+    StepTracker stepTracker,
+    Color bodyTextColor,
+    Color subtitleColor,
+  ) {
     return Row(
       children: [
         Expanded(
           child: _buildCard(
-            context, // Pass context to _buildCard
+            context: context,
             icon: Icons.local_fire_department,
             label: 'Daily Streak',
-            value: '${stepTracker.currentStreak}', // Display the current streak
+            value: '${stepTracker.currentStreak}',
             showFireIcon: true,
             bodyTextColor: bodyTextColor,
             subtitleColor: subtitleColor,
@@ -144,10 +250,10 @@ class HomePageContentState extends State<HomePageContent> {
         const SizedBox(width: 12),
         Expanded(
           child: _buildCard(
-            context, // Pass context to _buildCard
+            context: context,
             icon: Icons.monetization_on,
             label: 'Points Earned',
-            value: '${stepTracker.dailyPoints} / ${StepTracker.maxDailyPoints}', // Display daily points
+            value: '${stepTracker.dailyPoints} / ${StepTracker.maxDailyPoints}',
             showFireIcon: false,
             bodyTextColor: bodyTextColor,
             subtitleColor: subtitleColor,
@@ -157,100 +263,43 @@ class HomePageContentState extends State<HomePageContent> {
     );
   }
 
-  /// Helper method to build individual info cards.
-  Widget _buildCard(
-    BuildContext context, { // Added context parameter
+  Widget _buildCard({
+    required BuildContext context,
     required IconData icon,
     required String label,
     required String value,
     bool showFireIcon = false,
-    required Color bodyTextColor, // Added for explicit color control
-    required Color subtitleColor, // Added for explicit color control
+    required Color bodyTextColor,
+    required Color subtitleColor,
   }) {
     final screenWidth = MediaQuery.of(context).size.width;
 
-    return Container(
-      margin: const EdgeInsets.only(top: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black12,
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Text.rich(
-            TextSpan(
-              children: [
-                if (showFireIcon)
-                  const TextSpan(
-                    text: '🔥 ',
-                    style: TextStyle(fontSize: 20),
-                  ),
-                TextSpan(
-                  text: label,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: subtitleColor, // Use subtitle color for label
-                  ),
-                ),
-              ],
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: bodyTextColor, // Use body color for value
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Builds the "Redeem Points" button.
-  Widget _buildRedeemButton(double screenWidth, StepTracker stepTracker) {
-    return SizedBox(
-      width: screenWidth * 0.75,
-      child: ElevatedButton(
-        onPressed: stepTracker.canRedeemGiftCard // Button is enabled only if user can redeem
-            ? () {
-                // TODO: Implement actual redeem logic (e.g., show ad, then redeem)
-                stepTracker.redeemGiftCard(); // Call redeemGiftCard from StepTracker
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Points Redeemed!')),
-                );
-              }
-            : null, // Button is disabled if canRedeemGiftCard is false
-        style: ElevatedButton.styleFrom(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(30),
-          ),
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          backgroundColor: Colors.deepOrange,
-          foregroundColor: Colors.white,
-          elevation: 4,
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+    return Card(
+      elevation: 3,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      child: Container(
+        width: screenWidth * 0.4,
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            const Icon(Icons.card_giftcard, size: 24), // Gift icon
-            const SizedBox(width: 8),
+            Icon(icon, size: screenWidth * 0.08, color: Colors.deepOrange),
+            SizedBox(height: screenWidth * 0.02),
             Text(
-              'Redeem Points (${stepTracker.totalPoints} / ${StepTracker.giftCardThreshold})', // Display current total points
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              label,
+              style: TextStyle(
+                fontSize: screenWidth * 0.04,
+                color: subtitleColor,
+              ),
+            ),
+            SizedBox(height: screenWidth * 0.01),
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: bodyTextColor,
+              ),
             ),
           ],
         ),
