@@ -78,7 +78,6 @@ dependencies:
   google_mobile_ads: ^6.0.0
 
 
-
 dev_dependencies:
   flutter_test:
     sdk: flutter

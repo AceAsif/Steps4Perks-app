@@ -14,10 +14,20 @@ class RewardsPage extends StatelessWidget {
     final databaseService = DatabaseService();
     final currentUserId = databaseService.currentUserId;
 
-    if (currentUserId == null) {
-      return const Center(child: Text('Please log in to see rewards.'));
-    }
+    debugPrint('RewardsPage: Current User ID: $currentUserId'); // Keep this debug print
 
+    // --- TEMPORARY: For testing without authentication ---
+    // Remove this block when you implement proper user authentication flow.
+    if (currentUserId == null) {
+      debugPrint('RewardsPage: User ID is null, but proceeding for testing purposes.');
+      // You could return a loading indicator here if you want to wait for auth state
+      // return const Center(child: CircularProgressIndicator());
+      // Or, if you want to force display even without auth:
+      // return _buildRewardsContent(context, stepTracker, databaseService); // Call the content directly
+    }
+    // --- END TEMPORARY ---
+
+    // The rest of your build method is the actual content
     return DefaultTabController(
       length: 2,
       child: Scaffold(
@@ -40,8 +50,7 @@ class RewardsPage extends StatelessWidget {
                   // Display current redeemable points
                   Text(
                     'Current Redeemable: ${stepTracker.totalPoints} / ${StepTracker.dailyRedemptionCap} daily',
-                    // FIX: Replace headline6 with headlineSmall
-                    style: Theme.of(context).textTheme.headlineSmall, // <-- FIX IS HERE
+                    style: Theme.of(context).textTheme.headlineSmall,
                   ),
                   const SizedBox(height: 20),
                   // Woolworths Gift Card
@@ -69,7 +78,7 @@ class RewardsPage extends StatelessWidget {
                 ],
               ),
             ),
-            // Rewards History Tab
+            // Rewards History Tab (using StreamBuilder to fetch from Database)
             StreamBuilder<List<Map<String, dynamic>>>(
               stream: databaseService.getRedeemedRewards(),
               builder: (context, snapshot) {
