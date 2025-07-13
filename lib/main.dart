@@ -10,8 +10,14 @@ import 'package:timezone/timezone.dart' as tz;
 // IMPORTANT: Import flutter_local_notifications for NotificationResponse type
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
+//Firebase package library
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
 // Instantiate your NotificationService globally for easy access
 final NotificationService notificationService = NotificationService();
+
 
 // THIS IS THE MISSING TOP-LEVEL FUNCTION
 // It must be marked with @pragma('vm:entry-point') to ensure it's accessible
@@ -44,6 +50,11 @@ void main() async {
   // Initialize timezone data for flutter_local_notifications' zonedSchedule
   tz.initializeTimeZones();
   tz.setLocalLocation(tz.local);
+  
+  // Initialize Firebase with platform-specific default options.
+  await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+  );
 
   // Initialize the notification plugin itself. This does NOT schedule notifications.
   // The `notificationTapBackground` function is passed to its `initialize` method

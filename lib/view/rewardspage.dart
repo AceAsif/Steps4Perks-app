@@ -1,154 +1,104 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:myapp/features/giftcard.dart'; // This calls the giftcard.dart file to use the gift card.
-import 'package:myapp/features/stepbooster.dart'; // This calls the stepbooster.dart file to use the step booster.
 import 'package:myapp/features/step_tracker.dart';
-import 'package:myapp/view/rewardshistory.dart';
+import 'package:myapp/services/database_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 
-class RewardsPage extends StatefulWidget {
+class RewardsPage extends StatelessWidget {
   const RewardsPage({super.key});
 
   @override
-  RewardsPageState createState() => RewardsPageState();
-}
-
-class RewardsPageState extends State<RewardsPage> {
-  //It creates a GlobalKey that allows you to access and interact with the internal state of
-  // the StepBoosterCard widget from outside its class (typically from the parent widget).
-  final GlobalKey<StepBoosterCardState> _boosterKey =
-      GlobalKey<StepBoosterCardState>();
-  int selectedTabIndex = 0; // 0 = Available, 1 = History
-
-  @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
-
     final stepTracker = Provider.of<StepTracker>(context);
-    final tracker = Provider.of<StepTracker>(context);
-    final steps = tracker.currentSteps;
-    final dailyPoints = tracker.dailyPoints;
-    int totalPoints = tracker.totalPoints;
-    final canRedeem = tracker.canRedeemGiftCard;
+    final databaseService = DatabaseService();
+    final currentUserId = databaseService.currentUserId;
 
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
-        elevation: 0,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // removing rewards as it seems not needed
-            // const Text(
-            //   'Rewards',
-            //   style: TextStyle(fontWeight: FontWeight.bold),
-            // ),
-            Text(
-              'Total Points: $totalPoints',
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ],
+    if (currentUserId == null) {
+      return const Center(child: Text('Please log in to see rewards.'));
+    }
+
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Rewards'),
+          bottom: const TabBar(
+            tabs: [
+              Tab(text: 'Available'),
+              Tab(text: 'History'),
+            ],
+          ),
         ),
-      ),
-
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 30.0,
-              vertical: 10.0,
-            ), // more space from screen edge
-            child: Row(
-              children: [
-                _buildTabButton("Available", 0, screenWidth),
-                const SizedBox(width: 12),
-                _buildTabButton("History", 1, screenWidth),
-              ],
-            ),
-          ),
-          Expanded(
-            child:
-                selectedTabIndex == 0
-                    ? ListView(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      children: [
-                        GiftCard(
-                          icon: Icons.card_giftcard,
-                          title: 'Woolworths',
-                          subtitle: '\$25 Gift Card',
-                          progressText: '$totalPoints / 2,500 points',
-                          progressValue: totalPoints / 2500,
-                          isClaimable: totalPoints >= 2500,
-                          onClaimPressed: () {
-                            tracker.redeemGiftCard(); // Deduct 2500 points
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Gift card claimed!'),
-                              ),
-                            );
-                          },
-                        ),
-
-                        const SizedBox(height: 12),
-                        StepBoosterCard(
-                          key: _boosterKey,
-                        ), // Now included from stepbooster.dart
-                      ],
-                    )
-                    : const RewardHistoryPage(),
-            // const Center(child: Text("History Rewards List")),
-          ),
-        ],
-      ),
-
-      /*
-      /// ✅ Here's the floating action button
-      floatingActionButton: selectedTabIndex == 0
-          ? FloatingActionButton(
-              onPressed: () {
-                // Increment the booster progress by 20%
-                _boosterKey.currentState?.increaseProgress(0.2);
-              },
-              backgroundColor: Colors.orange,
-              child: const Icon(Icons.play_arrow),
-              tooltip: 'Simulate Ad Watch',
-            )
-          : null,
-          
-      // ✅ Set FAB location
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-    */
-    );
-  }
-
-  Widget _buildTabButton(String label, int index, double screenWidth) {
-    final isSelected = selectedTabIndex == index;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () {
-          setState(() {
-            selectedTabIndex = index;
-          });
-        },
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          decoration: BoxDecoration(
-            color:
-                isSelected
-                    ? Colors.black
-                    : const Color.fromARGB(255, 213, 212, 212),
-            borderRadius: BorderRadius.circular(25),
-          ),
-          child: Center(
-            child: Text(
-              label,
-              style: TextStyle(
-                color: isSelected ? Colors.white : Colors.black,
-                fontWeight: FontWeight.w500,
-                fontSize: screenWidth * 0.04,
+        body: TabBarView(
+          children: [
+            // Available Rewards Tab
+            SingleChildScrollView(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  // Display current redeemable points
+                  Text(
+                    'Current Redeemable: ${stepTracker.totalPoints} / ${StepTracker.dailyRedemptionCap} daily',
+                    // FIX: Replace headline6 with headlineSmall
+                    style: Theme.of(context).textTheme.headlineSmall, // <-- FIX IS HERE
+                  ),
+                  const SizedBox(height: 20),
+                  // Woolworths Gift Card
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.card_giftcard),
+                      title: const Text('Woolworths \$50 Gift Card'),
+                      subtitle: const Text('Redeemable at 2500 total points'),
+                      trailing: ElevatedButton(
+                        onPressed: stepTracker.canRedeemPoints
+                            ? () async {
+                                final int redeemedAmount = await stepTracker.redeemPoints();
+                                if (context.mounted){
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('Redeemed $redeemedAmount points for gift card!')),
+                                  );
+                                }
+                              }
+                            : null,
+                        child: const Text('Redeem'),
+                      ),
+                    ),
+                  ),
+                  // Other available rewards...
+                ],
               ),
             ),
-          ),
+            // Rewards History Tab
+            StreamBuilder<List<Map<String, dynamic>>>(
+              stream: databaseService.getRedeemedRewards(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (snapshot.hasError) {
+                  return Center(child: Text('Error: ${snapshot.error}'));
+                }
+                final redeemedRewards = snapshot.data ?? [];
+                if (redeemedRewards.isEmpty) {
+                  return const Center(child: Text('No rewards claimed yet.'));
+                }
+                return ListView.builder(
+                  itemCount: redeemedRewards.length,
+                  itemBuilder: (context, index) {
+                    final reward = redeemedRewards[index];
+                    return ListTile(
+                      title: Text(reward['rewardType'] ?? 'Unknown Reward'),
+                      subtitle: Text('Value: ${reward['value'] ?? 0.0} points - Status: ${reward['status'] ?? 'N/A'}'),
+                      trailing: Text(reward['timestamp'] != null
+                          ? DateFormat('MMM dd, yyyy').format((reward['timestamp'] as Timestamp).toDate())
+                          : 'N/A'),
+                    );
+                  },
+                );
+              },
+            ),
+          ],
         ),
       ),
     );
