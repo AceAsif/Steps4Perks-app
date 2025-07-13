@@ -1,12 +1,15 @@
 plugins {
     id("com.android.application")
+    // START: FlutterFire Configuration
+    id("com.google.gms.google-services")
+    // END: FlutterFire Configuration
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
 
 android {
-    namespace = "com.example.myapp"
+    namespace = "com.example.steps4perks"
     compileSdk = flutter.compileSdkVersion
     //ndkVersion = flutter.ndkVersion
     ndkVersion = "27.0.12077973" // ✅ Force correct NDK version
@@ -24,13 +27,18 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.myapp"
+        applicationId = "com.example.steps4perks"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        
+        // FIX: Override minSdkVersion to 23 (or higher) to satisfy Firebase Auth
+        minSdk = 23 // <-- CHANGE THIS LINE
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // Add multiDexEnabled true if you encounter method count limit issues (good practice with Firebase)
+        multiDexEnabled = true // <-- ADD THIS LINE IF NOT ALREADY PRESENT
     }
 
     buildTypes {
