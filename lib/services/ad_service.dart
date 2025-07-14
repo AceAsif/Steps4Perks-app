@@ -3,61 +3,48 @@ import 'dart:async'; // For Completer
 
 /// A service to simulate rewarded video ads when Google Mobile Ads SDK is not initialized.
 /// This is a mock implementation for development/testing without a full AdMob setup.
+///
+/// --- MODIFIED: This version is effectively "disabled" for testing purposes. ---
 class AdService {
   static final AdService _instance = AdService._internal();
   factory AdService() => _instance;
   AdService._internal();
 
-  bool _adLoaded = false; // Simulate whether an ad is "loaded"
+  // Keep these flags for consistency, but their values won't matter as much.
+  bool _adLoaded = true; // Always true to enable the button for testing
+  bool _isAdLoading = false;
+
+  // No actual ad unit ID needed for a disabled mock.
+  // final String _adUnitId = 'ca-app-pub-3940256099942544/5224354917';
 
   /// Simulates loading a rewarded ad.
-  /// In a real implementation, this would load an ad from Google Mobile Ads.
+  /// In this disabled mock, it does nothing and immediately "loads" the ad.
   Future<void> loadRewardedAd() async {
-    if (_adLoaded) {
-      debugPrint('Mock AdService: Ad is already "loaded".');
-      return;
-    }
-
-    debugPrint('Mock AdService: Simulating ad loading...');
-    // Simulate a network delay for loading the ad
-    await Future.delayed(const Duration(seconds: 2));
-
-    _adLoaded = true;
-    debugPrint('Mock AdService: Rewarded ad "loaded".');
+    debugPrint('Mock AdService: (DISABLED) loadRewardedAd called, but doing nothing.');
+    _adLoaded = true; // Ensure the ad is always "loaded" so the button is active
+    // No delay, no actual loading.
   }
 
   /// Simulates showing a rewarded ad.
-  /// In a real implementation, this would display the ad.
-  /// Returns true after a delay, simulating a successful ad watch.
+  /// In this disabled mock, it does nothing and immediately returns true.
   Future<bool> showRewardedAd() async {
-    if (!_adLoaded) {
-      debugPrint('Mock AdService: No ad "loaded". Attempting to "load" first...');
-      await loadRewardedAd(); // Try to "load" again
-      if (!_adLoaded) {
-        debugPrint('Mock AdService: Still no ad "loaded". Cannot "show".');
-        return false; // Simulate no ad available
-      }
-    }
-
-    debugPrint('Mock AdService: Simulating ad display...');
-    // Simulate the ad playing duration
-    await Future.delayed(const Duration(seconds: 3));
-
-    _adLoaded = false; // Simulate ad being consumed after showing
-    debugPrint('Mock AdService: Ad "shown" successfully. User "earned reward".');
-
-    // Automatically "load" the next ad after showing one
-    loadRewardedAd();
-
-    return true; // Simulate user successfully watching the ad and earning reward
+    debugPrint('Mock AdService: (DISABLED) showRewardedAd called, but doing nothing.');
+    // No delay, no actual ad display.
+    _adLoaded = true; // Keep it true so the button remains active after a "show"
+    return true; // Always simulate success
   }
 
   /// Checks if a mock ad is currently "loaded" and ready to be shown.
-  bool get isAdReady => _adLoaded;
+  /// Always returns true in this disabled mock.
+  bool get isAdReady {
+    debugPrint('Mock AdService: (DISABLED) isAdReady called, returning true.');
+    return true; // Always ready to allow button to be active
+  }
 
   /// Simulates disposing of ad resources.
+  /// In this disabled mock, it does nothing.
   void dispose() {
-    debugPrint('Mock AdService: Disposing mock ad resources.');
-    _adLoaded = false;
+    debugPrint('Mock AdService: (DISABLED) Disposing mock ad resources called, but doing nothing.');
+    _adLoaded = true; // Keep it true
   }
 }

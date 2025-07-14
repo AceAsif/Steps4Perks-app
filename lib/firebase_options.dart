@@ -58,7 +58,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyBAzzm3qB3DN7vqS9gub3IMxE_O8Sjys8o',
-    appId: '1:1008163722435:android:1cbbf3cfad92d4c1413e76',
+    appId: '1:1008163722435:android:adae61116994a319413e76',
     messagingSenderId: '1008163722435',
     projectId: 'steps4perks',
     storageBucket: 'steps4perks.firebasestorage.app',
@@ -70,6 +70,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '1008163722435',
     projectId: 'steps4perks',
     storageBucket: 'steps4perks.firebasestorage.app',
-    iosBundleId: 'com.example.steps4perks',
+    iosBundleId: 'com.example.myapp',
   );
+
 }

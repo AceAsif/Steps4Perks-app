@@ -7,6 +7,10 @@
   packages = [
     pkgs.jdk17
     pkgs.unzip
+
+    # ✅ Added for yakut support:
+    pkgs.yakut
+    pkgs.python311Packages.click
   ];
   # Sets environment variables in the workspace
   env = {};
