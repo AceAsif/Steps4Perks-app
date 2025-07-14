@@ -66,11 +66,11 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyCb8ds4if3sxsF7VXQ77Db7paS28HgZHAM',
-    appId: '1:1008163722435:ios:efdb524f53eb02a5413e76',
+    appId: '1:1008163722435:ios:8095ee479e723ac3413e76',
     messagingSenderId: '1008163722435',
     projectId: 'steps4perks',
     storageBucket: 'steps4perks.firebasestorage.app',
-    iosBundleId: 'com.example.myapp',
+    iosBundleId: 'com.example.steps4perks',
   );
 
 }
