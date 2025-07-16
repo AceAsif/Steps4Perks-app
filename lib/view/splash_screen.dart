@@ -23,7 +23,7 @@ class _SplashScreenState extends State<SplashScreen> {
     // Access StepTracker via Provider.
     // Its constructor calls _init() which handles permission, pedometer,
     // and crucially, loads data from DatabaseService (Firestore).
-    final stepTracker = Provider.of<StepTracker>(context, listen: false);
+    //final stepTracker = Provider.of<StepTracker>(context, listen: false);
 
     // Give StepTracker time to initialize and load data, including from Firestore.
     // Since StepTracker's _init() is called in its constructor, and it already

@@ -53,10 +53,8 @@ class HomePageContentState extends State<HomePageContent> {
     final subtitleColor =
         Theme.of(context).textTheme.bodyMedium?.color ?? Colors.black87;
 
-    // Check if user can redeem points AND if a mock ad is "ready"
     final bool canActivateRedeemButton =
         stepTracker.canRedeemPoints && _adService.isAdReady;
-    // Show loading indicator if points are met but mock ad isn't "ready"
     final bool showAdLoadingIndicator =
         stepTracker.canRedeemPoints && !_adService.isAdReady;
 
@@ -69,6 +67,26 @@ class HomePageContentState extends State<HomePageContent> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
+            // 🧪 Emulator Mode Badge
+            if (!stepTracker.isPhysicalDevice)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                margin: const EdgeInsets.only(bottom: 10),
+                decoration: BoxDecoration(
+                  color: Colors.deepPurple.shade100,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text(
+                  '🧪 Emulator Mode Active',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.deepPurple,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+
             _buildGauge(
               screenWidth,
               screenHeight,
@@ -169,10 +187,20 @@ class HomePageContentState extends State<HomePageContent> {
 
             SizedBox(height: screenHeight * 0.03),
 
-            // --- Mock Steps Button (for emulator testing) ---
-            if (!stepTracker.isPedometerAvailable)
+            // --- Emulator Mode Badge + Mock Steps Button ---
+            if (!stepTracker.isPhysicalDevice) ...[
+              const Padding(
+                padding: EdgeInsets.only(top: 20.0),
+                child: Text(
+                  '🧪 Emulator Mode Active!',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.deepPurple,
+                  ),
+                ),
+              ),
               Padding(
-                padding: const EdgeInsets.only(top: 20.0),
+                padding: const EdgeInsets.only(top: 10.0),
                 child: ElevatedButton(
                   onPressed: () {
                     Provider.of<StepTracker>(
@@ -197,6 +225,7 @@ class HomePageContentState extends State<HomePageContent> {
                   child: const Text('➕ Add 1000 Mock Steps (Emulator Only)'),
                 ),
               ),
+            ],
           ],
         ),
       ),
