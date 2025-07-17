@@ -22,13 +22,14 @@ class StepTracker with ChangeNotifier {
   bool _isNewDay = false;
   int pointsRedeemedToday = 0;
 
-  final DeviceService _deviceService = DeviceService();
-  final PermissionService _permissionService = PermissionService();
-  final PedometerService _pedometerService = PedometerService();
-  final StreakManager _streakManager = StreakManager();
-  final DatabaseService _databaseService = DatabaseService();
+  final _deviceService = DeviceService();
+  final _permissionService = PermissionService();
+  final _pedometerService = PedometerService();
+  final _streakManager = StreakManager();
+  final _databaseService = DatabaseService();
 
   Timer? _syncTimer;
+  bool _isDisposed = false; // ✅ Track disposal
 
   StepTracker() {
     _init();
@@ -46,27 +47,31 @@ class StepTracker with ChangeNotifier {
 
   void clearNewDayFlag() {
     _isNewDay = false;
-    notifyListeners();
+    _safeNotifyListeners();
   }
 
   Future<void> _init() async {
-    _isPhysicalDevice = await _deviceService.checkIfPhysicalDevice();
-    _isPedometerAvailable = await _permissionService.requestActivityPermission();
+    try {
+      _isPhysicalDevice = await _deviceService.checkIfPhysicalDevice();
+      _isPedometerAvailable = await _permissionService.requestActivityPermission();
 
-    await _loadBaseline();
-    await _loadPoints();
+      await _loadBaseline();
+      await _loadPoints();
 
-    if (_isPhysicalDevice && _isPedometerAvailable) {
-      _pedometerService.startListening(
-        onStepCount: _handleStepCount,
-        onStepError: _handleStepError,
-        onPedestrianStatusChanged: _handlePedStatus,
-        onPedestrianStatusError: _handlePedStatusError,
-      );
+      if (_isPhysicalDevice && _isPedometerAvailable) {
+        _pedometerService.startListening(
+          onStepCount: _handleStepCount,
+          onStepError: _handleStepError,
+          onPedestrianStatusChanged: _handlePedStatus,
+          onPedestrianStatusError: _handlePedStatusError,
+        );
+      }
+
+      _startSyncTimer();
+      _safeNotifyListeners();
+    } catch (e) {
+      debugPrint('❌ Initialization failed: $e');
     }
-
-    _startSyncTimer();
-    notifyListeners();
   }
 
   Future<void> _loadBaseline() async {
@@ -95,33 +100,37 @@ class StepTracker with ChangeNotifier {
   }
 
   void _handleStepCount(int steps) async {
-    final prefs = await SharedPreferences.getInstance();
-    _currentSteps = steps;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _currentSteps = steps;
 
-    final oldPoints = (_storedDailySteps ~/ stepsPerPoint).clamp(0, maxDailyPoints);
-    final newPoints = (_currentSteps ~/ stepsPerPoint).clamp(0, maxDailyPoints);
+      final oldPoints = (_storedDailySteps ~/ stepsPerPoint).clamp(0, maxDailyPoints);
+      final newPoints = (_currentSteps ~/ stepsPerPoint).clamp(0, maxDailyPoints);
 
-    if (newPoints > oldPoints) {
-      final gainedPoints = newPoints - oldPoints;
-      _totalPoints += gainedPoints;
-      _storedDailySteps = _currentSteps;
+      if (newPoints > oldPoints) {
+        final gainedPoints = newPoints - oldPoints;
+        _totalPoints += gainedPoints;
+        _storedDailySteps = _currentSteps;
 
-      await prefs.setInt('dailySteps', _currentSteps);
-      await prefs.setInt('totalPoints', _totalPoints);
+        await prefs.setInt('dailySteps', _currentSteps);
+        await prefs.setInt('totalPoints', _totalPoints);
+      }
+
+      final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+      _currentStreak = await _streakManager.evaluate(today, prefs, _storedDailySteps);
+
+      _safeNotifyListeners();
+    } catch (e) {
+      debugPrint('❌ Step handler failed: $e');
     }
-
-    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-    _currentStreak = await _streakManager.evaluate(today, prefs, _storedDailySteps);
-
-    notifyListeners();
   }
 
-  //This is the code that writes to the database every 5 mins.
   void _startSyncTimer() {
     _syncTimer = Timer.periodic(const Duration(minutes: 5), (_) async {
       try {
-        final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+        if (_isDisposed) return; // ✅ Don't run if disposed
 
+        final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
         debugPrint('🕒 Syncing Firestore at ${DateTime.now()}');
         debugPrint('👣 Steps: $_currentSteps | 🪙 Points: $dailyPoints');
 
@@ -129,7 +138,7 @@ class StepTracker with ChangeNotifier {
           date: today,
           steps: _currentSteps,
           totalPoints: dailyPoints,
-          streak: _currentStreak, // ✅ Add this line
+          streak: _currentStreak,
         );
 
         await _databaseService.saveTotalPoints(_totalPoints);
@@ -142,21 +151,26 @@ class StepTracker with ChangeNotifier {
   Future<int> redeemPoints() async {
     if (!canRedeemPoints) return 0;
 
-    pointsRedeemedToday += dailyRedemptionCap;
-    _totalPoints -= dailyRedemptionCap;
+    try {
+      pointsRedeemedToday += dailyRedemptionCap;
+      _totalPoints -= dailyRedemptionCap;
 
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('totalPoints', _totalPoints);
-    await _databaseService.saveTotalPoints(_totalPoints);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('totalPoints', _totalPoints);
+      await _databaseService.saveTotalPoints(_totalPoints);
 
-    notifyListeners();
+      _safeNotifyListeners();
+    } catch (e) {
+      debugPrint('❌ Redeem failed: $e');
+    }
+
     return dailyRedemptionCap;
   }
 
   void _handleStepError(dynamic error) {
     debugPrint('Step count error: $error');
     _isPedometerAvailable = false;
-    notifyListeners();
+    _safeNotifyListeners();
   }
 
   void _handlePedStatus(String status) {
@@ -166,7 +180,7 @@ class StepTracker with ChangeNotifier {
   void _handlePedStatusError(dynamic error) {
     debugPrint('Pedestrian status error: $error');
     _isPedometerAvailable = false;
-    notifyListeners();
+    _safeNotifyListeners();
   }
 
   Future<void> addMockSteps(int stepsToAdd) async {
@@ -176,9 +190,16 @@ class StepTracker with ChangeNotifier {
     }
   }
 
+  void _safeNotifyListeners() {
+    if (!_isDisposed) notifyListeners();
+  }
+
   @override
   void dispose() {
+    debugPrint('Dispose function entered');
     _syncTimer?.cancel();
+    _isDisposed = true; // ✅ Prevent future timers from running
     super.dispose();
+    debugPrint('Dispose function completed');
   }
 }
