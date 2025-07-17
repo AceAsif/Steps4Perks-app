@@ -10,12 +10,11 @@ import 'package:intl/intl.dart';
 class StepTracker with ChangeNotifier {
   // Constants
   static const int stepsPerPoint = 100;
-  static const int maxDailySteps = 10000;
   static const int maxDailyPoints = 100;
   static const int dailyRedemptionCap = 2500;
   static const int dailyStepGoal = 5000;
 
-  // State variables
+  // State
   int _currentSteps = 0;
   int _storedDailySteps = 0;
   int _totalPoints = 0;
@@ -51,8 +50,7 @@ class StepTracker with ChangeNotifier {
   }
 
   int get dailyPoints {
-    final cappedSteps = _currentSteps.clamp(0, maxDailySteps);
-    return (cappedSteps ~/ stepsPerPoint).clamp(0, maxDailyPoints);
+    return (_currentSteps ~/ stepsPerPoint).clamp(0, maxDailyPoints);
   }
 
   Future<void> _init() async {
@@ -104,24 +102,23 @@ class StepTracker with ChangeNotifier {
   void _handleStepCount(int steps) async {
     final prefs = await SharedPreferences.getInstance();
     _currentSteps = steps;
-    final cappedSteps = _currentSteps.clamp(0, maxDailySteps);
+
     final oldPoints = (_storedDailySteps ~/ stepsPerPoint).clamp(0, maxDailyPoints);
-    final newPoints = (cappedSteps ~/ stepsPerPoint).clamp(0, maxDailyPoints);
+    final newPoints = (_currentSteps ~/ stepsPerPoint).clamp(0, maxDailyPoints);
 
     if (newPoints > oldPoints) {
       final gainedPoints = newPoints - oldPoints;
       _totalPoints += gainedPoints;
-      _storedDailySteps = cappedSteps;
+      _storedDailySteps = _currentSteps;
 
-      await prefs.setInt('dailySteps', cappedSteps);
+      await prefs.setInt('dailySteps', _currentSteps);
       await prefs.setInt('totalPoints', _totalPoints);
 
-      // --- Firestore save calls ---
       final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
       await _databaseService.saveTotalPoints(_totalPoints);
       await _databaseService.saveDailyStats(
         date: today,
-        steps: cappedSteps,
+        steps: _currentSteps,
         totalPoints: _totalPoints,
       );
     }
@@ -157,18 +154,16 @@ class StepTracker with ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('totalPoints', _totalPoints);
 
-    // Firestore update after redeem
     await _databaseService.saveTotalPoints(_totalPoints);
 
     notifyListeners();
-
     return dailyRedemptionCap;
   }
 
   Future<void> addMockSteps(int stepsToAdd) async {
     if (!_isPhysicalDevice) {
       _currentSteps += stepsToAdd;
-      _handleStepCount(_currentSteps); // no await needed here
+      _handleStepCount(_currentSteps);
     }
   }
 }

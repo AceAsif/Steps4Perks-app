@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:myapp/features/step_gauge.dart'; // Assuming StepGauge is a separate widget for the circular progress
 import 'package:myapp/features/step_tracker.dart';
 import 'package:provider/provider.dart';
-import 'package:myapp/services/ad_service.dart'; // Import AdService (now the mocked one)
 
 class HomePageContent extends StatefulWidget {
   const HomePageContent({super.key});
@@ -13,15 +12,6 @@ class HomePageContent extends StatefulWidget {
 
 class HomePageContentState extends State<HomePageContent> {
   int _oldSteps = 0;
-  final AdService _adService =
-      AdService(); // Get instance of AdService (the mocked one)
-
-  @override
-  void initState() {
-    super.initState();
-    _adService
-        .loadRewardedAd(); // Start loading a mock ad as soon as the page loads
-  }
 
   @override
   void didChangeDependencies() {
@@ -33,17 +23,9 @@ class HomePageContentState extends State<HomePageContent> {
   }
 
   @override
-  void dispose() {
-    _adService.dispose(); // Dispose the mock ad when the widget is disposed
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     final stepTracker = Provider.of<StepTracker>(context);
     final currentSteps = stepTracker.currentSteps;
-    final totalPoints = stepTracker.totalPoints;
-    final currentStreak = stepTracker.currentStreak;
 
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
@@ -53,10 +35,7 @@ class HomePageContentState extends State<HomePageContent> {
     final subtitleColor =
         Theme.of(context).textTheme.bodyMedium?.color ?? Colors.black87;
 
-    final bool canActivateRedeemButton =
-        stepTracker.canRedeemPoints && _adService.isAdReady;
-    final bool showAdLoadingIndicator =
-        stepTracker.canRedeemPoints && !_adService.isAdReady;
+    final bool canActivateRedeemButton = stepTracker.canRedeemPoints;
 
     return SafeArea(
       child: SingleChildScrollView(
@@ -102,49 +81,22 @@ class HomePageContentState extends State<HomePageContent> {
             SizedBox(
               width: screenWidth * 0.75,
               child: ElevatedButton(
-                onPressed:
-                    canActivateRedeemButton
-                        ? () async {
-                          debugPrint(
-                            'Redeem button pressed. Showing mock ad...',
+                onPressed: canActivateRedeemButton
+                    ? () async {
+                        debugPrint('Redeem button pressed. Proceeding with redemption.');
+                        final int redeemedAmount =
+                            await stepTracker.redeemPoints(); // Call redeemPoints method
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'Redeemed $redeemedAmount points!',
+                              ),
+                            ),
                           );
-                          final bool adWatchedSuccessfully =
-                              await _adService.showRewardedAd(); // Call mock ad
-
-                          if (!mounted) return; // Check mounted after async gap
-
-                          if (adWatchedSuccessfully) {
-                            debugPrint(
-                              'Mock Ad watched successfully! Proceeding with redemption.',
-                            );
-                            final int redeemedAmount =
-                                await stepTracker
-                                    .redeemPoints(); // Call redeemPoints method
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    'Redeemed $redeemedAmount points after "watching" ad!',
-                                  ),
-                                ),
-                              );
-                            }
-                          } else {
-                            debugPrint(
-                              'Mock Ad was not "watched" successfully or "failed". Redemption aborted.',
-                            );
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    'Mock Ad not completed. Redemption failed.',
-                                  ),
-                                ),
-                              );
-                            }
-                          }
                         }
-                        : null, // Button is disabled if not enough points OR mock ad not "ready"
+                      }
+                    : null, // Button is disabled if not enough points
                 style: ElevatedButton.styleFrom(
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(30),
@@ -160,26 +112,12 @@ class HomePageContentState extends State<HomePageContent> {
                     const Icon(Icons.card_giftcard, size: 24),
                     const SizedBox(width: 8),
                     Text(
-                      'Redeem Points (${stepTracker.totalPoints} / ${StepTracker.dailyRedemptionCap} daily)', // Updated button text
+                      'Redeem Points (${stepTracker.totalPoints} / ${StepTracker.dailyRedemptionCap} daily)',
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 16,
                       ),
                     ),
-                    if (showAdLoadingIndicator) // Show loading indicator if mock ad is not "ready"
-                      const Padding(
-                        padding: EdgeInsets.only(left: 8.0),
-                        child: SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              Colors.white,
-                            ),
-                          ),
-                        ),
-                      ),
                   ],
                 ),
               ),

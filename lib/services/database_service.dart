@@ -41,6 +41,11 @@ class DatabaseService {
   }) async {
     try {
       final deviceId = await getDeviceId();
+
+      debugPrint('💾 Saving daily stats for $date');
+      debugPrint('🆔 Device ID: $deviceId');
+      debugPrint('👣 Steps: $steps | 🪙 Points: $totalPoints');
+
       final docRef = _firestore
           .collection('stepStats')
           .doc(deviceId)
@@ -52,10 +57,13 @@ class DatabaseService {
         'totalPoints': totalPoints,
         'timestamp': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
+
+      debugPrint('✅ Successfully saved daily stats!');
     } catch (e) {
-      debugPrint('Error saving daily stats: $e');
+      debugPrint('❌ Error saving daily stats: $e');
     }
   }
+
 
   /// Retrieves a stream of total points for the device.
   Stream<int> getTotalPointsStream() async* {
