@@ -38,6 +38,7 @@ class DatabaseService {
     required String date,
     required int steps,
     required int totalPoints,
+    required int streak, // ✅ Add this
   }) async {
     try {
       final deviceId = await getDeviceId();
@@ -55,6 +56,7 @@ class DatabaseService {
       await docRef.set({
         'steps': steps,
         'totalPoints': totalPoints,
+        'streak': streak, // ✅ Add this
         'timestamp': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 

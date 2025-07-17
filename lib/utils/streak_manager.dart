@@ -2,7 +2,7 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class StreakManager {
-  static const int dailyStepGoal = 5000;
+  static const int dailyStepGoal = 3000;
 
   Future<int> evaluate(String today, SharedPreferences prefs, int stepsToday) async {
     final lastGoalDate = prefs.getString('lastStepGoalDate') ?? '';

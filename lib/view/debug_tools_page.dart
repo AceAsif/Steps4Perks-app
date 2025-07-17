@@ -36,23 +36,36 @@ class _DebugToolsPageState extends State<DebugToolsPage> {
 
     return Scaffold(
       // --- FIX: Set a solid background color for the Scaffold ---
-      backgroundColor: Colors.grey[900], // A dark background for the entire page
+      backgroundColor:
+          Colors.grey[900], // A dark background for the entire page
       appBar: AppBar(
         title: const Text(
           '🐞 Debug Tools',
-          style: TextStyle(color: Colors.white), // Explicitly set title color to white
+          style: TextStyle(
+            color: Colors.white,
+          ), // Explicitly set title color to white
         ),
-        backgroundColor: Colors.deepOrange, // A distinct color for debug page's AppBar
-        iconTheme: const IconThemeData(color: Colors.white), // Ensure back button/other icons are white
+        backgroundColor:
+            Colors.deepOrange, // A distinct color for debug page's AppBar
+        iconTheme: const IconThemeData(
+          color: Colors.white,
+        ), // Ensure back button/other icons are white
         // --- System UI Overlay Style for this dark AppBar and page ---
         systemOverlayStyle: const SystemUiOverlayStyle(
-          statusBarIconBrightness: Brightness.light, // For Android: Light icons (white)
-          statusBarBrightness: Brightness.dark,     // For iOS: Light text (white)
-          statusBarColor: Colors.deepOrange,        // Match AppBar color for a solid look behind status bar
+          statusBarIconBrightness:
+              Brightness.light, // For Android: Light icons (white)
+          statusBarBrightness: Brightness.dark, // For iOS: Light text (white)
+          statusBarColor:
+              Colors
+                  .deepOrange, // Match AppBar color for a solid look behind status bar
         ),
       ),
-      body: SingleChildScrollView( // Use SingleChildScrollView for scrollability
-        padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.07, vertical: screenHeight * 0.04),
+      body: SingleChildScrollView(
+        // Use SingleChildScrollView for scrollability
+        padding: EdgeInsets.symmetric(
+          horizontal: screenWidth * 0.07,
+          vertical: screenHeight * 0.04,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -76,7 +89,9 @@ class _DebugToolsPageState extends State<DebugToolsPage> {
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text('Test notification scheduled at ${nextHour.toString().padLeft(2, '0')}:${testMinute.toString().padLeft(2, '0')}'),
+                      content: Text(
+                        'Test notification scheduled at ${nextHour.toString().padLeft(2, '0')}:${testMinute.toString().padLeft(2, '0')}',
+                      ),
                       duration: const Duration(seconds: 3),
                     ),
                   );
@@ -93,15 +108,14 @@ class _DebugToolsPageState extends State<DebugToolsPage> {
             ElevatedButton(
               onPressed: () async {
                 await NotificationService().resetDailyReminderFlag();
-
-                if (!mounted) return;
-
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Daily Reminder Flag Reset'),
-                    duration: Duration(seconds: 2),
-                  ),
-                );
+                if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Daily Reminder Flag Reset'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                }
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.orange,
@@ -118,7 +132,11 @@ class _DebugToolsPageState extends State<DebugToolsPage> {
             const SizedBox(height: 20),
             Text(
               'Synchronous Task Time: $_syncTaskTime',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white), // Text color for dark background
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ), // Text color for dark background
             ),
             const SizedBox(height: 10),
             ElevatedButton(
@@ -133,7 +151,11 @@ class _DebugToolsPageState extends State<DebugToolsPage> {
             const SizedBox(height: 20),
             Text(
               'Asynchronous Task Time: $_asyncTaskTime',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white), // Text color for dark background
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ), // Text color for dark background
             ),
             const SizedBox(height: 10),
             ElevatedButton(
@@ -152,17 +174,27 @@ class _DebugToolsPageState extends State<DebugToolsPage> {
             const SizedBox(height: 10),
             const Text(
               'If your app feels slow or "janky" (stutters), it means the UI thread is overloaded.',
-              style: TextStyle(fontSize: 14, color: Colors.white70), // Adjusted for dark background
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.white70,
+              ), // Adjusted for dark background
             ),
             const SizedBox(height: 10),
             const Text(
               'Look for "Skipped frames!" warnings in your console. For deep analysis, use:',
-              style: TextStyle(fontSize: 14, color: Colors.white70), // Adjusted for dark background
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.white70,
+              ), // Adjusted for dark background
             ),
             const SizedBox(height: 5),
             const Text(
               '1. Flutter DevTools (Performance Tab & CPU Profiler)\n2. `showPerformanceOverlay: true` in MaterialApp',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white), // Adjusted for dark background
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ), // Adjusted for dark background
             ),
             const SizedBox(height: 20),
           ],
@@ -179,7 +211,11 @@ class _DebugToolsPageState extends State<DebugToolsPage> {
         const Divider(height: 40, thickness: 2, color: Colors.grey),
         Text(
           title,
-          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
+          style: const TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
         ),
         const Divider(height: 20, thickness: 1, color: Colors.grey),
       ],
@@ -195,14 +231,20 @@ class _DebugToolsPageState extends State<DebugToolsPage> {
     for (int i = 0; i < 500000000; i++) {}
 
     stopwatch.stop();
-    debugPrint('Synchronous task finished in ${stopwatch.elapsedMilliseconds} ms');
+    debugPrint(
+      'Synchronous task finished in ${stopwatch.elapsedMilliseconds} ms',
+    );
 
     if (!mounted) return;
     setState(() {
       _syncTaskTime = '${stopwatch.elapsedMilliseconds} ms';
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Synchronous task completed in ${stopwatch.elapsedMilliseconds} ms')),
+      SnackBar(
+        content: Text(
+          'Synchronous task completed in ${stopwatch.elapsedMilliseconds} ms',
+        ),
+      ),
     );
   }
 
@@ -215,14 +257,20 @@ class _DebugToolsPageState extends State<DebugToolsPage> {
     await Future.delayed(const Duration(milliseconds: 500));
 
     stopwatch.stop();
-    debugPrint('Asynchronous task finished in ${stopwatch.elapsedMilliseconds} ms');
+    debugPrint(
+      'Asynchronous task finished in ${stopwatch.elapsedMilliseconds} ms',
+    );
 
     if (!mounted) return;
     setState(() {
       _asyncTaskTime = '${stopwatch.elapsedMilliseconds} ms';
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Asynchronous task completed in ${stopwatch.elapsedMilliseconds} ms')),
+      SnackBar(
+        content: Text(
+          'Asynchronous task completed in ${stopwatch.elapsedMilliseconds} ms',
+        ),
+      ),
     );
   }
 }

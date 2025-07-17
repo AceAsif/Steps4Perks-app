@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:myapp/services/database_service.dart';
 import 'package:myapp/services/device_service.dart';
@@ -8,13 +9,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 
 class StepTracker with ChangeNotifier {
-  // Constants
   static const int stepsPerPoint = 100;
   static const int maxDailyPoints = 100;
   static const int dailyRedemptionCap = 2500;
-  static const int dailyStepGoal = 5000;
 
-  // State
   int _currentSteps = 0;
   int _storedDailySteps = 0;
   int _totalPoints = 0;
@@ -24,18 +22,18 @@ class StepTracker with ChangeNotifier {
   bool _isNewDay = false;
   int pointsRedeemedToday = 0;
 
-  // Services
   final DeviceService _deviceService = DeviceService();
   final PermissionService _permissionService = PermissionService();
   final PedometerService _pedometerService = PedometerService();
   final StreakManager _streakManager = StreakManager();
   final DatabaseService _databaseService = DatabaseService();
 
+  Timer? _syncTimer;
+
   StepTracker() {
     _init();
   }
 
-  // Public getters
   int get currentSteps => _currentSteps;
   int get totalPoints => _totalPoints;
   int get currentStreak => _currentStreak;
@@ -44,13 +42,11 @@ class StepTracker with ChangeNotifier {
   bool get canRedeemPoints => (_totalPoints - pointsRedeemedToday) >= dailyRedemptionCap;
   bool get isPhysicalDevice => _isPhysicalDevice;
 
+  int get dailyPoints => (_currentSteps ~/ stepsPerPoint).clamp(0, maxDailyPoints);
+
   void clearNewDayFlag() {
     _isNewDay = false;
     notifyListeners();
-  }
-
-  int get dailyPoints {
-    return (_currentSteps ~/ stepsPerPoint).clamp(0, maxDailyPoints);
   }
 
   Future<void> _init() async {
@@ -69,6 +65,7 @@ class StepTracker with ChangeNotifier {
       );
     }
 
+    _startSyncTimer();
     notifyListeners();
   }
 
@@ -90,8 +87,6 @@ class StepTracker with ChangeNotifier {
       _currentSteps = _storedDailySteps;
       _currentStreak = prefs.getInt('currentStreak') ?? 0;
     }
-
-    notifyListeners();
   }
 
   Future<void> _loadPoints() async {
@@ -113,20 +108,49 @@ class StepTracker with ChangeNotifier {
 
       await prefs.setInt('dailySteps', _currentSteps);
       await prefs.setInt('totalPoints', _totalPoints);
-
-      final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-      await _databaseService.saveTotalPoints(_totalPoints);
-      await _databaseService.saveDailyStats(
-        date: today,
-        steps: _currentSteps,
-        totalPoints: _totalPoints,
-      );
     }
 
     final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
     _currentStreak = await _streakManager.evaluate(today, prefs, _storedDailySteps);
 
     notifyListeners();
+  }
+
+  //This is the code that writes to the database every 5 mins.
+  void _startSyncTimer() {
+    _syncTimer = Timer.periodic(const Duration(minutes: 5), (_) async {
+      try {
+        final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+
+        debugPrint('🕒 Syncing Firestore at ${DateTime.now()}');
+        debugPrint('👣 Steps: $_currentSteps | 🪙 Points: $dailyPoints');
+
+        await _databaseService.saveDailyStats(
+          date: today,
+          steps: _currentSteps,
+          totalPoints: dailyPoints,
+          streak: _currentStreak, // ✅ Add this line
+        );
+
+        await _databaseService.saveTotalPoints(_totalPoints);
+      } catch (e) {
+        debugPrint('❌ Firestore sync failed: $e');
+      }
+    });
+  }
+
+  Future<int> redeemPoints() async {
+    if (!canRedeemPoints) return 0;
+
+    pointsRedeemedToday += dailyRedemptionCap;
+    _totalPoints -= dailyRedemptionCap;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('totalPoints', _totalPoints);
+    await _databaseService.saveTotalPoints(_totalPoints);
+
+    notifyListeners();
+    return dailyRedemptionCap;
   }
 
   void _handleStepError(dynamic error) {
@@ -145,25 +169,16 @@ class StepTracker with ChangeNotifier {
     notifyListeners();
   }
 
-  Future<int> redeemPoints() async {
-    if (!canRedeemPoints) return 0;
-
-    pointsRedeemedToday += dailyRedemptionCap;
-    _totalPoints -= dailyRedemptionCap;
-
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('totalPoints', _totalPoints);
-
-    await _databaseService.saveTotalPoints(_totalPoints);
-
-    notifyListeners();
-    return dailyRedemptionCap;
-  }
-
   Future<void> addMockSteps(int stepsToAdd) async {
     if (!_isPhysicalDevice) {
       _currentSteps += stepsToAdd;
       _handleStepCount(_currentSteps);
     }
+  }
+
+  @override
+  void dispose() {
+    _syncTimer?.cancel();
+    super.dispose();
   }
 }
