@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:myapp/features/step_bar_chart.dart';
+import 'package:myapp/services/database_service.dart';
+import 'package:intl/intl.dart'; // ⬅️ Add this at the top
 
 class ActivityPage extends StatefulWidget {
   const ActivityPage({super.key});
@@ -10,6 +12,54 @@ class ActivityPage extends StatefulWidget {
 
 class _ActivityPageState extends State<ActivityPage> {
   int selectedTabIndex = 0; // 0 = Weekly, 1 = Monthly
+
+  final DatabaseService _databaseService = DatabaseService();
+  Map<String, int> _weeklyData = {};
+  bool _isLoading = true;
+
+  int _maxSteps = 0;
+  String _maxStepsDate = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchWeeklyData();
+  }
+
+  Future<void> _fetchWeeklyData() async {
+    try {
+      final data = await _databaseService.getWeeklyStepData(); // { 'Mon': 5000, 'Tue': 8000, ... }
+      final now = DateTime.now();
+      final startOfWeek = now.subtract(Duration(days: now.weekday - 1)); // Monday
+
+      int maxSteps = 0;
+      String maxStepsDateFormatted = '';
+
+      Map<String, int> formattedData = {};
+      for (int i = 0; i < 7; i++) {
+        final date = startOfWeek.add(Duration(days: i));
+        final dayLabel = DateFormat('E').format(date); // 'Mon', 'Tue', etc.
+        //final dateKey = DateFormat('yyyy-MM-dd').format(date);
+        final steps = data[dayLabel] ?? 0;
+
+        formattedData[dayLabel] = steps;
+
+        if (steps > maxSteps) {
+          maxSteps = steps;
+          maxStepsDateFormatted = DateFormat('d MMM yyyy (E)').format(date);
+        }
+      }
+
+      setState(() {
+        _weeklyData = formattedData;
+        _maxSteps = maxSteps;
+        _maxStepsDate = maxStepsDateFormatted;
+        _isLoading = false;
+      });
+    } catch (e) {
+      debugPrint("❌ Failed to load weekly data: $e");
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -25,34 +75,33 @@ class _ActivityPageState extends State<ActivityPage> {
         foregroundColor: Colors.black,
         elevation: 0,
       ),
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 30.0, vertical: 12.0),
-              child: Row(
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              child: Column(
                 children: [
-                  _buildTabButton("Weekly", 0, screenWidth),
-                  const SizedBox(width: 12),
-                  _buildTabButton("Monthly", 1, screenWidth),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 30.0, vertical: 12.0),
+                    child: Row(
+                      children: [
+                        _buildTabButton("Weekly", 0, screenWidth),
+                        const SizedBox(width: 12),
+                        _buildTabButton("Monthly", 1, screenWidth),
+                      ],
+                    ),
+                  ),
+                  selectedTabIndex == 0
+                      ? StepsBarChart(
+                          labels: _weeklyData.keys.toList(),
+                          stepValues: _weeklyData.values.map((e) => e.toDouble()).toList(),
+                          dateRange: 'Activity for last 7 days',
+                          maxSteps: _maxSteps,
+                          maxStepsDate: _maxStepsDate,
+                        )
+                      : const Center(child: Text('Monthly chart coming soon...')),
                 ],
               ),
             ),
-            // Chart and Data
-            selectedTabIndex == 0
-                ? StepsBarChart(
-                    labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-                    stepValues: [1900, 7200, 14200, 9500, 9400, 8200, 7500],
-                    dateRange: 'Activity for 10 - 16 June 2025',
-                  )
-                : StepsBarChart(
-                    labels: ['1-7', '8-14', '15-21', '22-28', '29-31'],
-                    stepValues: [5800, 6200, 7000, 8500, 9100],
-                    dateRange: 'Activity for June 2025',
-                  ),
-          ],
-        ),
-      ),
     );
   }
 

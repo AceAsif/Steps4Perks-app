@@ -6,7 +6,6 @@ class DatabaseService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   String? _cachedDeviceId;
 
-  /// Get and cache the device ID once
   Future<String> getDeviceId() async {
     if (_cachedDeviceId != null) return _cachedDeviceId!;
     final deviceInfo = DeviceInfoPlugin();
@@ -29,29 +28,19 @@ class DatabaseService {
     return _cachedDeviceId!;
   }
 
-  /// Save total points
   Future<void> saveTotalPoints(int totalPoints) async {
     try {
       final deviceId = await getDeviceId();
-
-      await _firestore
-          .collection('userProfiles')
-          .doc(deviceId)
-          .set({
-            'totalPoints': totalPoints,
-            'timestamp': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true))
-          .timeout(const Duration(seconds: 10));
-
+      await _firestore.collection('userProfiles').doc(deviceId).set({
+        'totalPoints': totalPoints,
+        'timestamp': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true)).timeout(const Duration(seconds: 10));
       debugPrint('✅ Total points saved: $totalPoints');
-    } on FirebaseException catch (e) {
-      debugPrint('🔥 Firebase error (saveTotalPoints): ${e.message}');
     } catch (e) {
       debugPrint('❌ Error saving total points: $e');
     }
   }
 
-  /// Save daily stats including steps, points, streak
   Future<void> saveDailyStats({
     required String date,
     required int steps,
@@ -60,64 +49,36 @@ class DatabaseService {
   }) async {
     try {
       final deviceId = await getDeviceId();
-
-      final docRef = _firestore
-          .collection('stepStats')
-          .doc(deviceId)
-          .collection('dailyStats')
-          .doc(date);
-
-      await docRef
-          .set({
-            'steps': steps,
-            'totalPoints': totalPoints,
-            'streak': streak,
-            'timestamp': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true))
-          .timeout(const Duration(seconds: 10));
-
+      final docRef = _firestore.collection('stepStats').doc(deviceId).collection('dailyStats').doc(date);
+      await docRef.set({
+        'steps': steps,
+        'totalPoints': totalPoints,
+        'streak': streak,
+        'timestamp': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true)).timeout(const Duration(seconds: 10));
       debugPrint('✅ Successfully saved daily stats for $date');
-    } on FirebaseException catch (e) {
-      debugPrint('🔥 Firebase error (saveDailyStats): ${e.message}');
     } catch (e) {
       debugPrint('❌ Error saving daily stats: $e');
     }
   }
 
-  /// Stream of total points
   Stream<int> getTotalPointsStream() async* {
     final deviceId = await getDeviceId();
     final docRef = _firestore.collection('userProfiles').doc(deviceId);
-    yield* docRef.snapshots().map((snapshot) {
-      if (snapshot.exists) {
-        return snapshot.data()?['totalPoints'] ?? 0;
-      }
-      return 0;
-    });
+    yield* docRef.snapshots().map((snapshot) => snapshot.data()?['totalPoints'] ?? 0);
   }
 
-  /// Stream of daily stats
   Stream<Map<String, dynamic>?> getDailyStatsStream(String date) async* {
     final deviceId = await getDeviceId();
-    final docRef = _firestore
-        .collection('stepStats')
-        .doc(deviceId)
-        .collection('dailyStats')
-        .doc(date);
-
+    final docRef = _firestore.collection('stepStats').doc(deviceId).collection('dailyStats').doc(date);
     yield* docRef.snapshots().map((doc) => doc.data());
   }
 
-  /// Generic daily stats stream from 'daily_stats' (optional)
   Stream<Map<String, dynamic>?> getDailyStats(String date) {
     final docRef = _firestore.collection('daily_stats').doc(date);
-    return docRef.snapshots().map((snapshot) {
-      if (snapshot.exists) return snapshot.data();
-      return null;
-    });
+    return docRef.snapshots().map((snapshot) => snapshot.exists ? snapshot.data() : null);
   }
 
-  /// Optional: Update fallback `daily_stats` collection
   Future<void> updateDailyStats({
     required String date,
     required int steps,
@@ -126,44 +87,32 @@ class DatabaseService {
   }) async {
     try {
       final docRef = _firestore.collection('daily_stats').doc(date);
-      await docRef
-          .set({
-            'steps': steps,
-            'pointsEarnedToday': pointsEarnedToday,
-            'totalPointsAccumulated': totalPointsAccumulated,
-            'updatedAt': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true))
-          .timeout(const Duration(seconds: 10));
+      await docRef.set({
+        'steps': steps,
+        'pointsEarnedToday': pointsEarnedToday,
+        'totalPointsAccumulated': totalPointsAccumulated,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true)).timeout(const Duration(seconds: 10));
     } catch (e) {
       debugPrint('❌ Failed to update daily_stats for $date: $e');
     }
   }
 
-  /// Redeem daily points (max once per day)
   Future<bool> redeemDailyPoints({
     required String date,
     int pointsToRedeem = 100,
   }) async {
     try {
       final deviceId = await getDeviceId();
-
-      final dailyDocRef = _firestore
-          .collection('stepStats')
-          .doc(deviceId)
-          .collection('dailyStats')
-          .doc(date);
-
+      final dailyDocRef = _firestore.collection('stepStats').doc(deviceId).collection('dailyStats').doc(date);
       final profileRef = _firestore.collection('userProfiles').doc(deviceId);
-
       final dailySnapshot = await dailyDocRef.get();
 
-      // Check if already redeemed
       if (dailySnapshot.exists && dailySnapshot.data()?['redeemed'] == true) {
         debugPrint('🟡 Points already redeemed for $date');
         return false;
       }
 
-      // Start transaction: update totalPoints + mark redeemed
       await _firestore.runTransaction((transaction) async {
         final profileSnapshot = await transaction.get(profileRef);
         final currentTotal = profileSnapshot.data()?['totalPoints'] ?? 0;
@@ -187,5 +136,46 @@ class DatabaseService {
       debugPrint('❌ Failed to redeem points for $date: $e');
       return false;
     }
+  }
+
+  Future<Map<String, int>> getWeeklyStepData() async {
+    final deviceId = await getDeviceId();
+    final now = DateTime.now();
+    final sevenDaysAgo = now.subtract(const Duration(days: 6));
+
+    final querySnapshot = await _firestore
+        .collection('stepStats')
+        .doc(deviceId)
+        .collection('dailyStats')
+        .where('timestamp', isGreaterThanOrEqualTo: Timestamp.fromDate(sevenDaysAgo))
+        .orderBy('timestamp')
+        .get();
+
+    final stepData = <String, int>{};
+
+    for (final doc in querySnapshot.docs) {
+      final data = doc.data();
+      final timestamp = data['timestamp'] as Timestamp?;
+      final steps = data['steps'] ?? 0;
+
+      if (timestamp != null) {
+        final date = timestamp.toDate();
+        final label = _getWeekdayLabel(date.weekday);
+        stepData[label] = steps;
+      }
+    }
+
+    for (int i = 0; i < 7; i++) {
+      final date = sevenDaysAgo.add(Duration(days: i));
+      final label = _getWeekdayLabel(date.weekday);
+      stepData.putIfAbsent(label, () => 0);
+    }
+
+    return stepData;
+  }
+
+  String _getWeekdayLabel(int weekday) {
+    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    return days[(weekday - 1) % 7];
   }
 }
