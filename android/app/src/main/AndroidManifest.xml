@@ -9,7 +9,8 @@
     <application
         android:label="Steps4Perks"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:enableOnBackInvokedCallback="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -38,12 +39,11 @@
             android:name="flutterEmbedding"
             android:value="2" />
 
-        <!-- REQUIRED: AdMob App ID for Google Mobile Ads SDK -->
-        <!-- Use Google's sample App ID for testing if you don't have a real one.
-             Replace with your actual AdMob App ID when ready for production. -->
-        <meta-data
-            android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-3940256099942544~3347511713"/> <!-- Google's sample App ID for testing -->
+    <!-- REQUIRED: AdMob App ID for Google Mobile Ads SDK -->
+    <!-- Temporarily remove this tag -->
+    <!-- <meta-data
+        android:name="com.google.android.gms.ads.APPLICATION_ID"
+        android:value="ca-app-pub-3940256099942544~3347511713"/> -->
 
     </application>
     <!-- Required to query activities that can process text, see:

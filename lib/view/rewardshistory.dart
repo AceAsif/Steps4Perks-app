@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+/*
 import 'package:provider/provider.dart';
 import 'package:myapp/services/database_service.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // Import FirebaseAuth
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+*/
 
 /// Displays the history of claimed rewards, fetching data from Firebase Firestore.
 class RewardHistoryPage extends StatefulWidget {
@@ -15,7 +16,7 @@ class RewardHistoryPage extends StatefulWidget {
 
 class _RewardHistoryPageState extends State<RewardHistoryPage> {
   // DatabaseService instance can be final here as it doesn't depend on BuildContext
-  final DatabaseService _databaseService = DatabaseService();
+  //final DatabaseService _databaseService = DatabaseService();
 
   @override
   void initState() {
@@ -26,88 +27,16 @@ class _RewardHistoryPageState extends State<RewardHistoryPage> {
 
   @override
   Widget build(BuildContext context) {
-    // Listen to Firebase Auth state changes
-    return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges(),
-      builder: (context, authSnapshot) {
-        if (authSnapshot.connectionState == ConnectionState.waiting) {
-          // Show loading while waiting for authentication state
-          debugPrint('RewardHistoryPage: Waiting for auth state...');
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        final User? user = authSnapshot.data;
-        final String? currentUserId = user?.uid;
-
-        debugPrint('RewardHistoryPage: Auth Stream User ID: $currentUserId');
-
-        // If no user is authenticated, display a login prompt
-        if (currentUserId == null) {
-          debugPrint('RewardHistoryPage: User ID is null, displaying login prompt.');
-          return const Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.person_off, size: 50, color: Colors.grey),
-                SizedBox(height: 16),
-                Text(
-                  'Please log in to see your reward history.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 16, color: Colors.grey),
-                ),
-              ],
-            ),
-          );
-        }
-
-        // If user is authenticated, then build the StreamBuilder for rewards data
-        // We now have a guaranteed non-null currentUserId here.
-        // FIX: Initialize the stream directly here, after currentUserId is confirmed.
-        debugPrint('RewardHistoryPage: User authenticated. Fetching rewards stream...');
-        return StreamBuilder<List<Map<String, dynamic>>>(
-          stream: _databaseService.getRedeemedRewards(), // This will now get the correct user ID
-          builder: (context, rewardsSnapshot) {
-            if (rewardsSnapshot.connectionState == ConnectionState.waiting) {
-              debugPrint('RewardHistoryPage: Waiting for rewards data...');
-              return const Center(child: CircularProgressIndicator());
-            }
-            if (rewardsSnapshot.hasError) {
-              debugPrint('RewardHistoryPage Rewards Stream Error: ${rewardsSnapshot.error}');
-              return Center(child: Text('Error loading history: ${rewardsSnapshot.error}'));
-            }
-
-            final redeemedRewards = rewardsSnapshot.data ?? [];
-
-            if (redeemedRewards.isEmpty) {
-              debugPrint('RewardHistoryPage: No rewards claimed yet.');
-              return const Center(child: Text('No rewards claimed yet.'));
-            }
-
-            debugPrint('RewardHistoryPage: Displaying ${redeemedRewards.length} rewards.');
-            return ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              itemCount: redeemedRewards.length,
-              itemBuilder: (context, index) {
-                final reward = redeemedRewards[index];
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 12.0),
-                  child: _ClaimedGiftCard(
-                    icon: Icons.card_giftcard,
-                    title: reward['rewardType'] ?? 'Unknown Reward',
-                    subtitle: 'Redeemed ${reward['value'] ?? 0.0} points',
-                    status: reward['status'] ?? 'N/A',
-                    timestamp: reward['timestamp'],
-                  ),
-                );
-              },
-            );
-          },
-        );
-      },
+    return const Center(
+      child: Text(
+        'Reward history feature is coming soon!',
+        style: TextStyle(fontSize: 16),
+      ),
     );
   }
 }
 
+/*
 /// A widget to display a single claimed gift card/reward in the history.
 class _ClaimedGiftCard extends StatelessWidget {
   final IconData icon;
@@ -203,3 +132,4 @@ class _ClaimedGiftCard extends StatelessWidget {
     );
   }
 }
+*/
