@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart'; // For kDebugMode
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // REQUIRED for SystemUiOverlayStyle
 import 'package:myapp/services/notification_service.dart'; // Import your NotificationService
+import 'package:provider/provider.dart';
+import 'package:myapp/features/step_tracker.dart';
 
 /// A dedicated page for debugging and testing various app functionalities.
 /// Only accessible when the app is running in debug mode.
@@ -126,6 +128,32 @@ class _DebugToolsPageState extends State<DebugToolsPage> {
             ),
 
             const SizedBox(height: 40),
+
+            // --- Step Reset Section ---
+            _buildSectionTitle('Step Tracker Debug'),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () async {
+                await Provider.of<StepTracker>(context, listen: false).resetSteps();
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('✅ Steps reset to 0'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blueAccent,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 15),
+              ),
+              child: const Text('🔄 Reset Step Count (Local Only)'),
+            ),
+
+            const SizedBox(height: 40),
+
 
             // --- Main Thread Performance Testing Section ---
             _buildSectionTitle('Main Thread Performance'),

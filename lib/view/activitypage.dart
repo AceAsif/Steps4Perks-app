@@ -39,7 +39,6 @@ class _ActivityPageState extends State<ActivityPage> {
       for (int i = 0; i < 7; i++) {
         final date = startOfWeek.add(Duration(days: i));
         final dayLabel = DateFormat('E').format(date); // 'Mon', 'Tue', etc.
-        //final dateKey = DateFormat('yyyy-MM-dd').format(date);
         final steps = data[dayLabel] ?? 0;
 
         formattedData[dayLabel] = steps;

@@ -159,7 +159,7 @@ class DatabaseService {
       final steps = data['steps'] ?? 0;
 
       if (timestamp != null) {
-        final date = timestamp.toDate();
+        final date = timestamp.toDate().toLocal(); // ensure local comparison
         final label = _getWeekdayLabel(date.weekday);
         stepData[label] = steps;
       }
