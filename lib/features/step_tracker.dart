@@ -100,30 +100,42 @@ class StepTracker with ChangeNotifier {
   }
 
   void _handleStepCount(int steps) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      _currentSteps = steps;
+    final prefs = await SharedPreferences.getInstance();
+    final now = DateTime.now();
+    final today = DateFormat('yyyy-MM-dd').format(now);
+    final lastDate = prefs.getString('lastResetDate') ?? '';
 
-      final oldPoints = (_storedDailySteps ~/ stepsPerPoint).clamp(0, maxDailyPoints);
-      final newPoints = (_currentSteps ~/ stepsPerPoint).clamp(0, maxDailyPoints);
+    if (today != lastDate) {
+      // 🔁 New day detected
+      _isNewDay = true;
+      _storedDailySteps = 0;
+      _currentSteps = 0;
 
-      if (newPoints > oldPoints) {
-        final gainedPoints = newPoints - oldPoints;
-        _totalPoints += gainedPoints;
-        _storedDailySteps = _currentSteps;
+      _currentStreak = await _streakManager.evaluate(today, prefs, 0);
 
-        await prefs.setInt('dailySteps', _currentSteps);
-        await prefs.setInt('totalPoints', _totalPoints);
-      }
-
-      final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-      _currentStreak = await _streakManager.evaluate(today, prefs, _storedDailySteps);
-
-      _safeNotifyListeners();
-    } catch (e) {
-      debugPrint('❌ Step handler failed: $e');
+      await prefs.setInt('dailySteps', 0);
+      await prefs.setString('lastResetDate', today);
+      await prefs.setInt('currentStreak', _currentStreak);
+      debugPrint('🕛 New day detected: $today. Resetting steps and streak.');
     }
+
+    _currentSteps = steps;
+
+    final oldPoints = (_storedDailySteps ~/ stepsPerPoint).clamp(0, maxDailyPoints);
+    final newPoints = (_currentSteps ~/ stepsPerPoint).clamp(0, maxDailyPoints);
+
+    if (newPoints > oldPoints) {
+      final gainedPoints = newPoints - oldPoints;
+      _totalPoints += gainedPoints;
+      _storedDailySteps = _currentSteps;
+
+      await prefs.setInt('dailySteps', _currentSteps);
+      await prefs.setInt('totalPoints', _totalPoints);
+    }
+
+    notifyListeners();
   }
+
 
   void _startSyncTimer() {
     _syncTimer = Timer.periodic(const Duration(minutes: 5), (_) async {
