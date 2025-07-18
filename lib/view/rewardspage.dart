@@ -14,45 +14,8 @@ class RewardsPage extends StatefulWidget {
 }
 
 class _RewardsPageState extends State<RewardsPage> {
-  bool _isClaiming = false;
-  bool _hasClaimedToday = false;
-
   final String today = DateFormat('yyyy-MM-dd').format(DateTime.now());
   final DatabaseService _databaseService = DatabaseService();
-
-  @override
-  void initState() {
-    super.initState();
-    _checkRedemptionStatus();
-  }
-
-  Future<void> _checkRedemptionStatus() async {
-    final stream = _databaseService.getDailyStatsStream(today);
-    stream.listen((data) {
-      if (mounted && data != null && data['redeemed'] == true) {
-        setState(() => _hasClaimedToday = true);
-      }
-    });
-  }
-
-  Future<void> _handleDailyClaim() async {
-    setState(() => _isClaiming = true);
-    final success = await _databaseService.redeemDailyPoints(date: today);
-    if (mounted) {
-      setState(() {
-        _isClaiming = false;
-        if (success) _hasClaimedToday = true;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(success
-              ? '🎉 Successfully claimed 100 points!'
-              : '⚠️ Already claimed today or error occurred'),
-        ),
-      );
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -80,28 +43,6 @@ class _RewardsPageState extends State<RewardsPage> {
                   Text(
                     'Current Redeemable: ${stepTracker.totalPoints} / ${StepTracker.dailyRedemptionCap} daily',
                     style: Theme.of(context).textTheme.headlineSmall,
-                  ),
-                  const SizedBox(height: 20),
-
-                  /// 🔹 Daily Points Claim Card
-                  Card(
-                    child: ListTile(
-                      leading: const Icon(Icons.emoji_events),
-                      title: const Text('Daily 100 Points'),
-                      subtitle: const Text('Tap to manually claim your 100 daily points'),
-                      trailing: ElevatedButton(
-                        onPressed: _hasClaimedToday || _isClaiming
-                            ? null
-                            : _handleDailyClaim,
-                        child: _isClaiming
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Text('Claim'),
-                      ),
-                    ),
                   ),
                   const SizedBox(height: 20),
 
