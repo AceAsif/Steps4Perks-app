@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:myapp/features/step_gauge.dart'; // Assuming StepGauge is a separate widget for the circular progress
+import 'package:intl/intl.dart';
+import 'package:myapp/features/step_gauge.dart';
 import 'package:myapp/features/step_tracker.dart';
 import 'package:provider/provider.dart';
 
@@ -35,8 +36,6 @@ class HomePageContentState extends State<HomePageContent> {
     final subtitleColor =
         Theme.of(context).textTheme.bodyMedium?.color ?? Colors.black87;
 
-    final bool canActivateRedeemButton = stepTracker.canRedeemPoints;
-
     return SafeArea(
       child: SingleChildScrollView(
         padding: EdgeInsets.symmetric(
@@ -46,7 +45,6 @@ class HomePageContentState extends State<HomePageContent> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // 🧪 Emulator Mode Badge
             if (!stepTracker.isPhysicalDevice)
               Container(
                 width: double.infinity,
@@ -74,45 +72,46 @@ class HomePageContentState extends State<HomePageContent> {
               subtitleColor,
             ),
             _buildSummaryCards(stepTracker, bodyTextColor, subtitleColor),
-
             SizedBox(height: screenHeight * 0.03),
 
-            // --- Redeem Points Button ---
+            // --- Daily Claim Button (100 Points) ---
             SizedBox(
               width: screenWidth * 0.75,
               child: ElevatedButton(
-                onPressed: canActivateRedeemButton
+                onPressed: stepTracker.dailyPoints >= StepTracker.maxDailyPoints &&
+                        !stepTracker.hasClaimedToday
                     ? () async {
-                        debugPrint('Redeem button pressed. Proceeding with redemption.');
-                        final int redeemedAmount =
-                            await stepTracker.redeemPoints(); // Call redeemPoints method
+                        final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+                        final success = await stepTracker.claimDailyPoints(today);
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text(
-                                'Redeemed $redeemedAmount points!',
-                              ),
+                              content: Text(success
+                                  ? '🎉 Claimed 100 Daily Points!'
+                                  : '⚠️ Already claimed or error occurred'),
                             ),
                           );
                         }
                       }
-                    : null, // Button is disabled if not enough points
+                    : null,
                 style: ElevatedButton.styleFrom(
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(30),
                   ),
                   padding: const EdgeInsets.symmetric(vertical: 14),
-                  backgroundColor: Colors.deepOrange,
+                  backgroundColor: Colors.deepPurple,
                   foregroundColor: Colors.white,
                   elevation: 5,
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.card_giftcard, size: 24),
+                    const Icon(Icons.redeem, size: 24),
                     const SizedBox(width: 8),
                     Text(
-                      'Redeem Points (${stepTracker.totalPoints} / ${StepTracker.dailyRedemptionCap} daily)',
+                      stepTracker.hasClaimedToday
+                          ? '✅ 100 Points Claimed Today'
+                          : 'Claim 100 Points (Daily)',
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 16,
@@ -125,7 +124,7 @@ class HomePageContentState extends State<HomePageContent> {
 
             SizedBox(height: screenHeight * 0.03),
 
-            // --- Emulator Mode Badge + Mock Steps Button ---
+            // --- Emulator Mode Controls ---
             if (!stepTracker.isPhysicalDevice) ...[
               const Padding(
                 padding: EdgeInsets.only(top: 20.0),
@@ -141,10 +140,8 @@ class HomePageContentState extends State<HomePageContent> {
                 padding: const EdgeInsets.only(top: 10.0),
                 child: ElevatedButton(
                   onPressed: () {
-                    Provider.of<StepTracker>(
-                      context,
-                      listen: false,
-                    ).addMockSteps(1000);
+                    Provider.of<StepTracker>(context, listen: false)
+                        .addMockSteps(1000);
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('Added 1000 mock steps!')),
                     );
@@ -209,7 +206,6 @@ class HomePageContentState extends State<HomePageContent> {
             icon: Icons.local_fire_department,
             label: 'Daily Streak',
             value: '${stepTracker.currentStreak}',
-            showFireIcon: true,
             bodyTextColor: bodyTextColor,
             subtitleColor: subtitleColor,
           ),
@@ -221,7 +217,6 @@ class HomePageContentState extends State<HomePageContent> {
             icon: Icons.monetization_on,
             label: 'Points Earned',
             value: '${stepTracker.dailyPoints} / ${StepTracker.maxDailyPoints}',
-            showFireIcon: false,
             bodyTextColor: bodyTextColor,
             subtitleColor: subtitleColor,
           ),
@@ -235,7 +230,6 @@ class HomePageContentState extends State<HomePageContent> {
     required IconData icon,
     required String label,
     required String value,
-    bool showFireIcon = false,
     required Color bodyTextColor,
     required Color subtitleColor,
   }) {

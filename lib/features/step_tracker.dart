@@ -22,6 +22,10 @@ class StepTracker with ChangeNotifier {
   bool _isNewDay = false;
   int pointsRedeemedToday = 0;
 
+  bool _hasClaimedToday = false;
+  String? _lastClaimCheckedDate;
+  bool get hasClaimedToday => _hasClaimedToday;
+
   final _deviceService = DeviceService();
   final _permissionService = PermissionService();
   final _pedometerService = PedometerService();
@@ -29,7 +33,7 @@ class StepTracker with ChangeNotifier {
   final _databaseService = DatabaseService();
 
   Timer? _syncTimer;
-  bool _isDisposed = false; // ✅ Track disposal
+  bool _isDisposed = false;
 
   StepTracker() {
     _init();
@@ -42,12 +46,48 @@ class StepTracker with ChangeNotifier {
   bool get isNewDay => _isNewDay;
   bool get canRedeemPoints => (_totalPoints - pointsRedeemedToday) >= dailyRedemptionCap;
   bool get isPhysicalDevice => _isPhysicalDevice;
-
   int get dailyPoints => (_currentSteps ~/ stepsPerPoint).clamp(0, maxDailyPoints);
 
   void clearNewDayFlag() {
     _isNewDay = false;
     _safeNotifyListeners();
+  }
+
+  /// ✅ Check if user has claimed 100 points today
+  Future<void> checkIfClaimedToday(String date, DatabaseService databaseService) async {
+    final prefs = await SharedPreferences.getInstance();
+    final lastChecked = prefs.getString('lastClaimCheckedDate') ?? '';
+
+    if (lastChecked != date) {
+      _hasClaimedToday = false;
+      _lastClaimCheckedDate = date;
+      await prefs.setString('lastClaimCheckedDate', date);
+      notifyListeners();
+    }
+
+    try {
+      final snapshot = await databaseService.getDailyStatsStream(date).first;
+      if (snapshot != null && snapshot['redeemed'] == true) {
+        _hasClaimedToday = true;
+        notifyListeners();
+        debugPrint('✅ Already claimed 100 points for $date');
+      }
+    } catch (e) {
+      debugPrint('❌ Failed to check if claimed today: $e');
+    }
+  }
+
+  /// ✅ Claim 100 daily points
+  Future<bool> claimDailyPoints(String date) async {
+    final success = await _databaseService.redeemDailyPoints(date: date);
+    if (success) {
+      _hasClaimedToday = true;
+      notifyListeners();
+      debugPrint('✅ Successfully claimed 100 daily points for $date');
+    } else {
+      debugPrint('⚠️ Claim failed or already claimed for $date');
+    }
+    return success;
   }
 
   Future<void> _init() async {
@@ -92,6 +132,8 @@ class StepTracker with ChangeNotifier {
       _currentSteps = _storedDailySteps;
       _currentStreak = prefs.getInt('currentStreak') ?? 0;
     }
+
+    await checkIfClaimedToday(today, _databaseService);
   }
 
   Future<void> _loadPoints() async {
@@ -106,7 +148,6 @@ class StepTracker with ChangeNotifier {
     final lastDate = prefs.getString('lastResetDate') ?? '';
 
     if (today != lastDate) {
-      // 🔁 New day detected
       _isNewDay = true;
       _storedDailySteps = 0;
       _currentSteps = 0;
@@ -116,6 +157,8 @@ class StepTracker with ChangeNotifier {
       await prefs.setInt('dailySteps', 0);
       await prefs.setString('lastResetDate', today);
       await prefs.setInt('currentStreak', _currentStreak);
+
+      await checkIfClaimedToday(today, _databaseService);
       debugPrint('🕛 New day detected: $today. Resetting steps and streak.');
     }
 
@@ -136,11 +179,10 @@ class StepTracker with ChangeNotifier {
     notifyListeners();
   }
 
-
   void _startSyncTimer() {
     _syncTimer = Timer.periodic(const Duration(minutes: 5), (_) async {
       try {
-        if (_isDisposed) return; // ✅ Don't run if disposed
+        if (_isDisposed) return;
 
         final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
         debugPrint('🕒 Syncing Firestore at ${DateTime.now()}');
@@ -210,7 +252,7 @@ class StepTracker with ChangeNotifier {
   void dispose() {
     debugPrint('Dispose function entered');
     _syncTimer?.cancel();
-    _isDisposed = true; // ✅ Prevent future timers from running
+    _isDisposed = true;
     super.dispose();
     debugPrint('Dispose function completed');
   }

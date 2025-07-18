@@ -138,4 +138,54 @@ class DatabaseService {
       debugPrint('❌ Failed to update daily_stats for $date: $e');
     }
   }
+
+  /// Redeem daily points (max once per day)
+  Future<bool> redeemDailyPoints({
+    required String date,
+    int pointsToRedeem = 100,
+  }) async {
+    try {
+      final deviceId = await getDeviceId();
+
+      final dailyDocRef = _firestore
+          .collection('stepStats')
+          .doc(deviceId)
+          .collection('dailyStats')
+          .doc(date);
+
+      final profileRef = _firestore.collection('userProfiles').doc(deviceId);
+
+      final dailySnapshot = await dailyDocRef.get();
+
+      // Check if already redeemed
+      if (dailySnapshot.exists && dailySnapshot.data()?['redeemed'] == true) {
+        debugPrint('🟡 Points already redeemed for $date');
+        return false;
+      }
+
+      // Start transaction: update totalPoints + mark redeemed
+      await _firestore.runTransaction((transaction) async {
+        final profileSnapshot = await transaction.get(profileRef);
+        final currentTotal = profileSnapshot.data()?['totalPoints'] ?? 0;
+        final newTotal = currentTotal + pointsToRedeem;
+
+        transaction.update(profileRef, {
+          'totalPoints': newTotal,
+          'timestamp': FieldValue.serverTimestamp(),
+        });
+
+        transaction.set(dailyDocRef, {
+          'redeemed': true,
+          'pointsRedeemed': pointsToRedeem,
+          'timestamp': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      });
+
+      debugPrint('✅ Successfully redeemed $pointsToRedeem points for $date');
+      return true;
+    } catch (e) {
+      debugPrint('❌ Failed to redeem points for $date: $e');
+      return false;
+    }
+  }
 }
