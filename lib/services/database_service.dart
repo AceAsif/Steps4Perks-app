@@ -219,5 +219,25 @@ class DatabaseService {
     return weekData;
   }
 
+  //Delete record from the firestore database
+  Future<void> deleteAllDailyStats() async {
+    try {
+      final deviceId = await getDeviceId();
+      final collectionRef = _firestore
+          .collection('stepStats')
+          .doc(deviceId)
+          .collection('dailyStats');
+
+      final snapshot = await collectionRef.get();
+      for (final doc in snapshot.docs) {
+        await doc.reference.delete();
+      }
+
+      debugPrint('🗑️ All dailyStats documents deleted for device: $deviceId');
+    } catch (e) {
+      debugPrint('❌ Failed to delete dailyStats: $e');
+    }
+  }
+
 
 }

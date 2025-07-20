@@ -99,7 +99,7 @@ class HomePageContentState extends State<HomePageContent> {
                     borderRadius: BorderRadius.circular(30),
                   ),
                   padding: const EdgeInsets.symmetric(vertical: 14),
-                  backgroundColor: Colors.deepPurple,
+                  backgroundColor: Colors.deepOrange,
                   foregroundColor: Colors.white,
                   elevation: 5,
                 ),
