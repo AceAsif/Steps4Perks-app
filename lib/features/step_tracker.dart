@@ -94,7 +94,7 @@ class StepTracker with ChangeNotifier {
         notifyListeners();
       }
     } catch (e) {
-      debugPrint('❌ checkIfClaimedToday: \$e');
+      debugPrint('❌ checkIfClaimedToday: $e');
     }
   }
 
@@ -223,7 +223,7 @@ class StepTracker with ChangeNotifier {
       await _databaseService.saveTotalPoints(_totalPoints);
       _safeNotifyListeners();
     } catch (e) {
-      debugPrint('❌ Redeem failed: \$e');
+      debugPrint('❌ Redeem failed: $e');
     }
     return dailyRedemptionCap;
   }
@@ -240,17 +240,18 @@ class StepTracker with ChangeNotifier {
   }
 
   void _handleStepError(dynamic error) {
-    debugPrint('Step count error: \$error');
+    debugPrint('Step count error: $error');
     _isPedometerAvailable = false;
     _safeNotifyListeners();
   }
 
   void _handlePedStatus(String status) {
-    debugPrint('Pedestrian status: \$status');
+    debugPrint('🚶 Pedestrian status: $status');
+    // You could update a variable here and notify listeners to show it in the UI
   }
 
   void _handlePedStatusError(dynamic error) {
-    debugPrint('Pedestrian status error: \$error');
+    debugPrint('Pedestrian status error: $error');
     _isPedometerAvailable = false;
     _safeNotifyListeners();
   }

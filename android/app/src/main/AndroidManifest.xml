@@ -2,7 +2,7 @@
 
     <!-- Permissions for your app -->
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
+    <!--uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/-->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <!-- Add INTERNET permission if not already present, often needed for ads and Firebase -->
     <uses-permission android:name="android.permission.INTERNET"/>
