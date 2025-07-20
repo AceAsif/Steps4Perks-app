@@ -168,21 +168,28 @@ class StepTracker with ChangeNotifier {
     final today = DateFormat('yyyy-MM-dd').format(DateTime.now().toLocal());
     final lastDate = prefs.getString('lastResetDate') ?? '';
 
+    debugPrint('📅 Today: $today, Last Reset: $lastDate, Incoming Steps: $steps');
+
+    // Save the latest incoming step count FIRST
+    _currentSteps = steps;
+
+    // If it’s a new day, reset the daily values
     if (today != lastDate) {
+      debugPrint('🔄 Detected new day. Resetting daily stats.');
+
       _isNewDay = true;
       _storedDailySteps = 0;
-      _currentSteps = 0;
 
       _currentStreak = await _streakManager.evaluate(today, prefs, 0);
-
-      await prefs.setInt('dailySteps', 0);
       await prefs.setString('lastResetDate', today);
+      await prefs.setInt('dailySteps', 0);
       await prefs.setInt('currentStreak', _currentStreak);
-
       await checkIfClaimedToday(today, _databaseService);
+    } else {
+      // Load previous stored steps for comparison
+      _storedDailySteps = prefs.getInt('dailySteps') ?? 0;
+      _currentStreak = prefs.getInt('currentStreak') ?? 0;
     }
-
-    _currentSteps = steps;
 
     final oldPoints = (_storedDailySteps ~/ stepsPerPoint).clamp(0, maxDailyPoints);
     final newPoints = (_currentSteps ~/ stepsPerPoint).clamp(0, maxDailyPoints);
@@ -196,7 +203,7 @@ class StepTracker with ChangeNotifier {
       await prefs.setInt('totalPoints', _totalPoints);
     }
 
-    notifyListeners();
+    _safeNotifyListeners();
   }
 
   void _startSyncTimer() {
