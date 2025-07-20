@@ -111,11 +111,13 @@ class StepTracker with ChangeNotifier {
     try {
       _isPhysicalDevice = await _deviceService.checkIfPhysicalDevice();
       _isPedometerAvailable = await _permissionService.requestActivityPermission();
+      await _permissionService.requestBatteryOptimizationException();
 
       await _loadBaseline();
       await _loadPoints();
 
       if (_isPhysicalDevice && _isPedometerAvailable) {
+        debugPrint('✅ Starting pedometer service...');
         _pedometerService.startListening(
           onStepCount: _handleStepCount,
           onStepError: _handleStepError,
@@ -123,13 +125,14 @@ class StepTracker with ChangeNotifier {
           onPedestrianStatusError: _handlePedStatusError,
         );
       } else {
+        debugPrint('⚠️ Pedometer unavailable or permission denied');
         _handleStepCount(_currentSteps);
       }
 
       _startSyncTimer();
       _safeNotifyListeners();
     } catch (e) {
-      debugPrint('❌ Initialization failed: \$e');
+      debugPrint('❌ Initialization failed: $e');
     }
   }
 

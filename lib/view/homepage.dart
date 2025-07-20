@@ -63,30 +63,62 @@ class HomePageContentState extends State<HomePageContent> {
                 physics: const AlwaysScrollableScrollPhysics(),
                 child: Column(
                   children: [
+                    if (!stepTracker.isPedometerAvailable && stepTracker.isPhysicalDevice)
+                      _buildWarningBanner(),
                     if (!stepTracker.isPhysicalDevice)
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(10),
-                        margin: const EdgeInsets.only(bottom: 10),
-                        decoration: BoxDecoration(
-                          color: Colors.deepPurple.shade100,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Text(
-                          '🧪 Emulator Mode Active',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.deepPurple, fontWeight: FontWeight.bold),
-                        ),
-                      ),
+                      _buildEmulatorBanner(),
                     _buildGauge(screenWidth, stepTracker),
                     _buildSummaryCards(stepTracker),
                     const SizedBox(height: 20),
                     _buildClaimButton(stepTracker, screenWidth),
                     const SizedBox(height: 20),
-                    if (!stepTracker.isPhysicalDevice) _buildEmulatorControls(context),
+                    if (!stepTracker.isPhysicalDevice)
+                      _buildEmulatorControls(context),
                   ],
                 ),
               ),
+      ),
+    );
+  }
+
+  Widget _buildWarningBanner() {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.red.shade100,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: const Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Icon(Icons.warning, color: Colors.red),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Pedometer not available. Please check permissions and battery optimisation settings.',
+              style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmulatorBanner() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: Colors.deepPurple.shade100,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: const Text(
+        '🧪 Emulator Mode Active',
+        textAlign: TextAlign.center,
+        style: TextStyle(color: Colors.deepPurple, fontWeight: FontWeight.bold),
       ),
     );
   }
