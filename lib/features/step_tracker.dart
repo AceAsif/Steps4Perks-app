@@ -15,6 +15,7 @@ class StepTracker with ChangeNotifier {
 
   int _currentSteps = 0;
   int _storedDailySteps = 0;
+  int _dailyStepBaseline = 0;
   int _totalPoints = 0;
   int _currentStreak = 0;
   bool _isPedometerAvailable = false;
@@ -33,7 +34,7 @@ class StepTracker with ChangeNotifier {
   final _streakManager = StreakManager();
   final _databaseService = DatabaseService();
 
-  DatabaseService get databaseService => _databaseService; // ✅ public getter added
+  DatabaseService get databaseService => _databaseService;
 
   Timer? _syncTimer;
   bool _isDisposed = false;
@@ -94,7 +95,7 @@ class StepTracker with ChangeNotifier {
         notifyListeners();
       }
     } catch (e) {
-      debugPrint('❌ checkIfClaimedToday: $e');
+      debugPrint('❌ checkIfClaimedToday: \$e');
     }
   }
 
@@ -111,13 +112,11 @@ class StepTracker with ChangeNotifier {
     try {
       _isPhysicalDevice = await _deviceService.checkIfPhysicalDevice();
       _isPedometerAvailable = await _permissionService.requestActivityPermission();
-      await _permissionService.requestBatteryOptimizationException();
 
       await _loadBaseline();
       await _loadPoints();
 
       if (_isPhysicalDevice && _isPedometerAvailable) {
-        debugPrint('✅ Starting pedometer service...');
         _pedometerService.startListening(
           onStepCount: _handleStepCount,
           onStepError: _handleStepError,
@@ -125,14 +124,13 @@ class StepTracker with ChangeNotifier {
           onPedestrianStatusError: _handlePedStatusError,
         );
       } else {
-        debugPrint('⚠️ Pedometer unavailable or permission denied');
         _handleStepCount(_currentSteps);
       }
 
       _startSyncTimer();
       _safeNotifyListeners();
     } catch (e) {
-      debugPrint('❌ Initialization failed: $e');
+      debugPrint('❌ Initialization failed: \$e');
     }
   }
 
@@ -140,6 +138,8 @@ class StepTracker with ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     final today = DateFormat('yyyy-MM-dd').format(DateTime.now().toLocal());
     final lastDate = prefs.getString('lastResetDate') ?? '';
+
+    _dailyStepBaseline = prefs.getInt('dailyStepBaseline') ?? 0;
 
     if (lastDate != today) {
       _isNewDay = true;
@@ -163,33 +163,34 @@ class StepTracker with ChangeNotifier {
     _totalPoints = prefs.getInt('totalPoints') ?? 0;
   }
 
-  void _handleStepCount(int steps) async {
+  void _handleStepCount(int cumulativeSteps) async {
     final prefs = await SharedPreferences.getInstance();
     final today = DateFormat('yyyy-MM-dd').format(DateTime.now().toLocal());
     final lastDate = prefs.getString('lastResetDate') ?? '';
 
-    debugPrint('📅 Today: $today, Last Reset: $lastDate, Incoming Steps: $steps');
+    debugPrint('📅 Today: \$today, Last Reset: \$lastDate, Incoming Steps: \$cumulativeSteps');
 
-    // Save the latest incoming step count FIRST
-    _currentSteps = steps;
-
-    // If it’s a new day, reset the daily values
     if (today != lastDate) {
-      debugPrint('🔄 Detected new day. Resetting daily stats.');
-
       _isNewDay = true;
+      _dailyStepBaseline = cumulativeSteps;
       _storedDailySteps = 0;
+      _currentSteps = 0;
 
       _currentStreak = await _streakManager.evaluate(today, prefs, 0);
+
+      await prefs.setInt('dailyStepBaseline', _dailyStepBaseline);
       await prefs.setString('lastResetDate', today);
       await prefs.setInt('dailySteps', 0);
       await prefs.setInt('currentStreak', _currentStreak);
+
       await checkIfClaimedToday(today, _databaseService);
     } else {
-      // Load previous stored steps for comparison
+      _dailyStepBaseline = prefs.getInt('dailyStepBaseline') ?? cumulativeSteps;
       _storedDailySteps = prefs.getInt('dailySteps') ?? 0;
       _currentStreak = prefs.getInt('currentStreak') ?? 0;
     }
+
+    _currentSteps = (cumulativeSteps - _dailyStepBaseline).clamp(0, 1000000);
 
     final oldPoints = (_storedDailySteps ~/ stepsPerPoint).clamp(0, maxDailyPoints);
     final newPoints = (_currentSteps ~/ stepsPerPoint).clamp(0, maxDailyPoints);
@@ -203,7 +204,7 @@ class StepTracker with ChangeNotifier {
       await prefs.setInt('totalPoints', _totalPoints);
     }
 
-    _safeNotifyListeners();
+    notifyListeners();
   }
 
   void _startSyncTimer() {
@@ -230,7 +231,7 @@ class StepTracker with ChangeNotifier {
       await _databaseService.saveTotalPoints(_totalPoints);
       _safeNotifyListeners();
     } catch (e) {
-      debugPrint('❌ Redeem failed: $e');
+      debugPrint('❌ Redeem failed: \$e');
     }
     return dailyRedemptionCap;
   }
@@ -247,18 +248,17 @@ class StepTracker with ChangeNotifier {
   }
 
   void _handleStepError(dynamic error) {
-    debugPrint('Step count error: $error');
+    debugPrint('Step count error: \$error');
     _isPedometerAvailable = false;
     _safeNotifyListeners();
   }
 
   void _handlePedStatus(String status) {
-    debugPrint('🚶 Pedestrian status: $status');
-    // You could update a variable here and notify listeners to show it in the UI
+    debugPrint('🚶 Pedestrian status: \$status');
   }
 
   void _handlePedStatusError(dynamic error) {
-    debugPrint('Pedestrian status error: $error');
+    debugPrint('Pedestrian status error: \$error');
     _isPedometerAvailable = false;
     _safeNotifyListeners();
   }
