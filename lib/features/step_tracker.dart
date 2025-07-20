@@ -23,8 +23,9 @@ class StepTracker with ChangeNotifier {
   int pointsRedeemedToday = 0;
 
   bool _hasClaimedToday = false;
-  String? _lastClaimCheckedDate;
   bool get hasClaimedToday => _hasClaimedToday;
+  String? _lastClaimCheckedDate;
+  String? get lastClaimCheckedDate => _lastClaimCheckedDate;
 
   final _deviceService = DeviceService();
   final _permissionService = PermissionService();
