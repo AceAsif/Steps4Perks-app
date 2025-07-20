@@ -15,34 +15,47 @@ class HomePageContent extends StatefulWidget {
 class HomePageContentState extends State<HomePageContent> {
   int _oldSteps = 0;
   bool _isLoading = true;
+  bool _hasLoadedData = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadData();
+    });
+  }
 
   Future<void> _loadData() async {
+    debugPrint("🔁 _loadData called");
+    if (_hasLoadedData) return; // ✅ early exit if already loaded
+
     final stepTracker = Provider.of<StepTracker>(context, listen: false);
     final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
 
     try {
-      final data = await stepTracker.databaseService.getDailyStatsStream(today).first.timeout(const Duration(seconds: 5));
+      final data = await stepTracker.databaseService
+          .getDailyStatsStream(today)
+          .first
+          .timeout(const Duration(seconds: 5));
       if (data != null) {
         stepTracker.setCurrentSteps(data['steps'] ?? 0);
         stepTracker.setCurrentStreak(data['streak'] ?? 0);
         stepTracker.setTotalPoints(data['totalPoints'] ?? 0);
         stepTracker.setClaimedToday(data['redeemed'] == true);
       }
+      _hasLoadedData = true; // ✅ mark as loaded only after success
     } catch (e) {
       debugPrint('⚠️ Error loading data: $e');
     } finally {
       if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() {
+          _isLoading = false;
+          _oldSteps = stepTracker.currentSteps;
+        });
       }
     }
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _loadData();
-    _oldSteps = Provider.of<StepTracker>(context, listen: false).currentSteps;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -59,14 +72,31 @@ class HomePageContentState extends State<HomePageContent> {
         child: _isLoading
             ? _buildShimmer(screenHeight)
             : SingleChildScrollView(
-                padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.05, vertical: screenHeight * 0.001),
+                padding: EdgeInsets.symmetric(
+                  horizontal: screenWidth * 0.05,
+                  vertical: screenHeight * 0.001,
+                ),
                 physics: const AlwaysScrollableScrollPhysics(),
                 child: Column(
                   children: [
-                    if (!stepTracker.isPedometerAvailable && stepTracker.isPhysicalDevice)
-                      _buildWarningBanner(),
                     if (!stepTracker.isPhysicalDevice)
-                      _buildEmulatorBanner(),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(10),
+                        margin: const EdgeInsets.only(bottom: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.deepPurple.shade100,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Text(
+                          '🧪 Emulator Mode Active',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.deepPurple,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
                     _buildGauge(screenWidth, stepTracker),
                     _buildSummaryCards(stepTracker),
                     const SizedBox(height: 20),
@@ -77,48 +107,6 @@ class HomePageContentState extends State<HomePageContent> {
                   ],
                 ),
               ),
-      ),
-    );
-  }
-
-  Widget _buildWarningBanner() {
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.red.shade100,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: const Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Icon(Icons.warning, color: Colors.red),
-          SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              'Pedometer not available. Please check permissions and battery optimisation settings.',
-              style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEmulatorBanner() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(10),
-      margin: const EdgeInsets.only(bottom: 10),
-      decoration: BoxDecoration(
-        color: Colors.deepPurple.shade100,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: const Text(
-        '🧪 Emulator Mode Active',
-        textAlign: TextAlign.center,
-        style: TextStyle(color: Colors.deepPurple, fontWeight: FontWeight.bold),
       ),
     );
   }
@@ -143,7 +131,7 @@ class HomePageContentState extends State<HomePageContent> {
               ),
             ),
           ),
-        )
+        ),
       ],
     );
   }
@@ -153,9 +141,13 @@ class HomePageContentState extends State<HomePageContent> {
       width: screenWidth * 0.65,
       height: screenWidth * 0.65,
       child: TweenAnimationBuilder<double>(
-        tween: Tween<double>(begin: _oldSteps.toDouble(), end: tracker.currentSteps.toDouble()),
+        tween: Tween<double>(
+          begin: _oldSteps.toDouble(),
+          end: tracker.currentSteps.toDouble(),
+        ),
         duration: const Duration(milliseconds: 600),
-        builder: (context, value, child) => StepGauge(currentSteps: value.toInt()),
+        builder: (context, value, child) =>
+            StepGauge(currentSteps: value.toInt()),
         onEnd: () => _oldSteps = tracker.currentSteps,
       ),
     );
@@ -165,11 +157,13 @@ class HomePageContentState extends State<HomePageContent> {
     return Row(
       children: [
         Expanded(
-          child: _buildCard(Icons.local_fire_department, 'Daily Streak', '${tracker.currentStreak}'),
+          child: _buildCard(
+              Icons.local_fire_department, 'Daily Streak', '${tracker.currentStreak}'),
         ),
         const SizedBox(width: 12),
         Expanded(
-          child: _buildCard(Icons.monetization_on, 'Points Earned', '${tracker.dailyPoints} / ${StepTracker.maxDailyPoints}'),
+          child: _buildCard(Icons.monetization_on, 'Points Earned',
+              '${tracker.dailyPoints} / ${StepTracker.maxDailyPoints}'),
         ),
       ],
     );
@@ -185,9 +179,12 @@ class HomePageContentState extends State<HomePageContent> {
           children: [
             Icon(icon, size: 32, color: Colors.deepOrange),
             const SizedBox(height: 6),
-            Text(label, style: const TextStyle(fontSize: 14, color: Colors.black54)),
+            Text(label,
+                style: const TextStyle(fontSize: 14, color: Colors.black54)),
             const SizedBox(height: 4),
-            Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            Text(value,
+                style: const TextStyle(
+                    fontSize: 20, fontWeight: FontWeight.bold)),
           ],
         ),
       ),
@@ -198,13 +195,19 @@ class HomePageContentState extends State<HomePageContent> {
     return SizedBox(
       width: width * 0.75,
       child: ElevatedButton(
-        onPressed: tracker.dailyPoints >= StepTracker.maxDailyPoints && !tracker.hasClaimedToday
+        onPressed: tracker.dailyPoints >= StepTracker.maxDailyPoints &&
+                !tracker.hasClaimedToday
             ? () async {
-                final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+                final today =
+                    DateFormat('yyyy-MM-dd').format(DateTime.now());
                 final success = await tracker.claimDailyPoints(today);
                 if (!mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(success ? '🎉 Claimed 100 Daily Points!' : '⚠️ Already claimed or error occurred')),
+                  SnackBar(
+                    content: Text(success
+                        ? '🎉 Claimed 100 Daily Points!'
+                        : '⚠️ Already claimed or error occurred'),
+                  ),
                 );
               }
             : null,
@@ -212,7 +215,8 @@ class HomePageContentState extends State<HomePageContent> {
           backgroundColor: Colors.deepOrange,
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(vertical: 14),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -220,8 +224,11 @@ class HomePageContentState extends State<HomePageContent> {
             const Icon(Icons.redeem, size: 24),
             const SizedBox(width: 8),
             Text(
-              tracker.hasClaimedToday ? '✅ 100 Points Claimed Today' : 'Claim 100 Points (Daily)',
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              tracker.hasClaimedToday
+                  ? '✅ 100 Points Claimed Today'
+                  : 'Claim 100 Points (Daily)',
+              style: const TextStyle(
+                  fontWeight: FontWeight.bold, fontSize: 16),
             ),
           ],
         ),
@@ -232,11 +239,14 @@ class HomePageContentState extends State<HomePageContent> {
   Widget _buildEmulatorControls(BuildContext context) {
     return Column(
       children: [
-        const Text('🧪 Emulator Mode Active!', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
+        const Text('🧪 Emulator Mode Active!',
+            style: TextStyle(
+                fontWeight: FontWeight.bold, color: Colors.deepPurple)),
         const SizedBox(height: 10),
         ElevatedButton(
           onPressed: () {
-            Provider.of<StepTracker>(context, listen: false).addMockSteps(1000);
+            Provider.of<StepTracker>(context, listen: false)
+                .addMockSteps(1000);
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Added 1000 mock steps!')),
             );
@@ -244,8 +254,10 @@ class HomePageContentState extends State<HomePageContent> {
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.blueGrey,
             foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
           child: const Text('➕ Add 1000 Mock Steps (Emulator Only)'),
         ),

@@ -95,7 +95,7 @@ class StepTracker with ChangeNotifier {
         notifyListeners();
       }
     } catch (e) {
-      debugPrint('❌ checkIfClaimedToday: \$e');
+      debugPrint('❌ checkIfClaimedToday: $e');
     }
   }
 
@@ -130,7 +130,7 @@ class StepTracker with ChangeNotifier {
       _startSyncTimer();
       _safeNotifyListeners();
     } catch (e) {
-      debugPrint('❌ Initialization failed: \$e');
+      debugPrint('❌ Initialization failed: $e');
     }
   }
 
@@ -168,7 +168,7 @@ class StepTracker with ChangeNotifier {
     final today = DateFormat('yyyy-MM-dd').format(DateTime.now().toLocal());
     final lastDate = prefs.getString('lastResetDate') ?? '';
 
-    debugPrint('📅 Today: \$today, Last Reset: \$lastDate, Incoming Steps: \$cumulativeSteps');
+    debugPrint('📅 Today: $today, Last Reset: $lastDate, Incoming Steps: $cumulativeSteps');
 
     if (today != lastDate) {
       _isNewDay = true;
@@ -231,7 +231,7 @@ class StepTracker with ChangeNotifier {
       await _databaseService.saveTotalPoints(_totalPoints);
       _safeNotifyListeners();
     } catch (e) {
-      debugPrint('❌ Redeem failed: \$e');
+      debugPrint('❌ Redeem failed: $e');
     }
     return dailyRedemptionCap;
   }
@@ -248,17 +248,17 @@ class StepTracker with ChangeNotifier {
   }
 
   void _handleStepError(dynamic error) {
-    debugPrint('Step count error: \$error');
+    debugPrint('Step count error: $error');
     _isPedometerAvailable = false;
     _safeNotifyListeners();
   }
 
   void _handlePedStatus(String status) {
-    debugPrint('🚶 Pedestrian status: \$status');
+    debugPrint('🚶 Pedestrian status: $status');
   }
 
   void _handlePedStatusError(dynamic error) {
-    debugPrint('Pedestrian status error: \$error');
+    debugPrint('Pedestrian status error: $error');
     _isPedometerAvailable = false;
     _safeNotifyListeners();
   }
