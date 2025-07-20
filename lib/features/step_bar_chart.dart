@@ -3,11 +3,11 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart'; // Required for date formatting
 
 class StepsBarChart extends StatefulWidget {
-  final List<String> labels; // ['Mon', 'Tue', ..., 'Sun']
-  final List<double> stepValues; // Step values as doubles
-  final String dateRange; // Title (e.g., "Activity for last 7 days")
-  final int maxSteps; // Personal record value
-  final String maxStepsDate; // Date string in 'yyyy-MM-dd' format
+  final List<String> labels;
+  final List<double> stepValues;
+  final String dateRange;
+  final int maxSteps;
+  final String maxStepsDate;
 
   const StepsBarChart({
     super.key,
@@ -28,9 +28,18 @@ class _StepsBarChartState extends State<StepsBarChart> {
       final DateTime parsedDate = DateTime.parse(dateStr);
       return DateFormat('d MMM yyyy (E)').format(parsedDate);
     } catch (e) {
-      return dateStr; // Fallback to raw input if parsing fails
+      return dateStr;
     }
   }
+
+  bool get isWeekly => widget.labels.any((label) =>
+      label.toLowerCase().contains('mon') ||
+      label.toLowerCase().contains('tue') ||
+      label.toLowerCase().contains('wed') ||
+      label.toLowerCase().contains('thu') ||
+      label.toLowerCase().contains('fri') ||
+      label.toLowerCase().contains('sat') ||
+      label.toLowerCase().contains('sun'));
 
   @override
   Widget build(BuildContext context) {
@@ -177,13 +186,22 @@ class _StepsBarChartState extends State<StepsBarChart> {
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
           ),
           Text(
-            'Most Steps in a Day: ${widget.maxSteps}',
+            widget.maxSteps > 0
+                ? (isWeekly
+                    ? 'Most Steps in a Day: ${widget.maxSteps}'
+                    : 'Most Steps in a Week: ${widget.maxSteps}')
+                : (isWeekly
+                    ? 'Most Steps in a Day: No steps recorded yet'
+                    : 'Most Steps in a Week: No steps recorded yet'),
             style: const TextStyle(fontSize: 14),
           ),
-          Text(
-            'Date: ${formatDate(widget.maxStepsDate)}',
-            style: const TextStyle(color: Colors.grey),
-          ),
+          if (widget.maxStepsDate.trim().isNotEmpty)
+            Text(
+              isWeekly
+                  ? 'Date: ${formatDate(widget.maxStepsDate)}'
+                  : 'Week: ${widget.maxStepsDate}',
+              style: const TextStyle(color: Colors.grey),
+            ),
         ],
       ),
     );

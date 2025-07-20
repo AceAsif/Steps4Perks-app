@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:intl/intl.dart';
 
 class DatabaseService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -178,4 +179,45 @@ class DatabaseService {
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     return days[(weekday - 1) % 7];
   }
+
+  Future<Map<String, int>> getMonthlyStepData() async {
+    final deviceId = await getDeviceId();
+    final now = DateTime.now();
+    final thirtyDaysAgo = now.subtract(const Duration(days: 29));
+
+    final querySnapshot = await _firestore
+        .collection('stepStats')
+        .doc(deviceId)
+        .collection('dailyStats')
+        .where('timestamp', isGreaterThanOrEqualTo: Timestamp.fromDate(thirtyDaysAgo))
+        .orderBy('timestamp')
+        .get();
+
+    final Map<String, int> weekData = {
+      'Week 1': 0,
+      'Week 2': 0,
+      'Week 3': 0,
+      'Week 4': 0,
+      'Week 5': 0,
+    };
+
+    for (final doc in querySnapshot.docs) {
+      final data = doc.data();
+      final timestamp = data['timestamp'] as Timestamp?;
+      final steps = data['steps'] ?? 0;
+
+      if (timestamp != null) {
+        final date = timestamp.toDate().toLocal();
+        final int day = now.difference(date).inDays;
+        final int daysAgo = 29 - day;
+        final weekNumber = (daysAgo ~/ 7) + 1;
+        final label = 'Week $weekNumber';
+        weekData[label] = ((weekData[label] ?? 0) + steps).toInt();
+      }
+    }
+
+    return weekData;
+  }
+
+
 }
