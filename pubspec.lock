@@ -218,10 +218,10 @@ packages:
     dependency: "direct main"
     description:
       name: flutter_local_notifications
-      sha256: edae0c34573233ab03f5ba1f07465e55c384743893042cb19e010b4ee8541c12
+      sha256: "81350df6cb90196390b0b175c645968620d508a4fc9db5996215a1cfa4135a03"
       url: "https://pub.dev"
     source: hosted
-    version: "19.3.0"
+    version: "19.3.1"
   flutter_local_notifications_linux:
     dependency: transitive
     description:
@@ -242,10 +242,10 @@ packages:
     dependency: transitive
     description:
       name: flutter_local_notifications_windows
-      sha256: f8fc0652a601f83419d623c85723a3e82ad81f92b33eaa9bcc21ea1b94773e6e
+      sha256: ed46d7ae4ec9d19e4c8fa2badac5fe27ba87a3fe387343ce726f927af074ec98
       url: "https://pub.dev"
     source: hosted
-    version: "1.0.0"
+    version: "1.0.2"
   flutter_test:
     dependency: "direct dev"
     description: flutter
@@ -388,10 +388,10 @@ packages:
     dependency: "direct main"
     description:
       name: permission_handler
-      sha256: "2d070d8684b68efb580a5997eb62f675e8a885ef0be6e754fb9ef489c177470f"
+      sha256: bc917da36261b00137bbc8896bf1482169cd76f866282368948f032c8c1caae1
       url: "https://pub.dev"
     source: hosted
-    version: "12.0.0+1"
+    version: "12.0.1"
   permission_handler_android:
     dependency: transitive
     description:
@@ -569,18 +569,18 @@ packages:
     dependency: transitive
     description:
       name: syncfusion_flutter_core
-      sha256: b86e8e24fc44c6a2759adfebd02bf27f2954062e6f3bd52343faa16966039b85
+      sha256: "27cbeb650b780d1f3ab254b26ac64e2b06e92e2d64349537b0db3f714ff1e962"
       url: "https://pub.dev"
     source: hosted
-    version: "30.1.37"
+    version: "30.1.40"
   syncfusion_flutter_gauges:
     dependency: "direct main"
     description:
       name: syncfusion_flutter_gauges
-      sha256: d022f8ecd50dfc4d621d7a56c90a69c1c33fe5e90101625f563eae582396f872
+      sha256: "68cfedfb4003c25eda26d1fe87bc000b810b7f888501581b033468c0506b6b25"
       url: "https://pub.dev"
     source: hosted
-    version: "30.1.37"
+    version: "30.1.40"
   term_glyph:
     dependency: transitive
     description:
