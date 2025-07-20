@@ -1,8 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:myapp/features/bottomnavigation.dart'; // Your main navigation
-import 'package:myapp/features/step_tracker.dart';     // Your StepTracker
-// No direct Firebase/Firestore imports here, as StepTracker handles it
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});

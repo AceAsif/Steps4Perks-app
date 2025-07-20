@@ -1,4 +1,3 @@
-// Updated StepTracker with day reset, Firestore sync, and localised time fixes
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:myapp/services/database_service.dart';
@@ -33,6 +32,8 @@ class StepTracker with ChangeNotifier {
   final _streakManager = StreakManager();
   final _databaseService = DatabaseService();
 
+  DatabaseService get databaseService => _databaseService; // ✅ public getter added
+
   Timer? _syncTimer;
   bool _isDisposed = false;
 
@@ -54,6 +55,26 @@ class StepTracker with ChangeNotifier {
     _safeNotifyListeners();
   }
 
+  void setCurrentSteps(int steps) {
+    _currentSteps = steps;
+    notifyListeners();
+  }
+
+  void setCurrentStreak(int streak) {
+    _currentStreak = streak;
+    notifyListeners();
+  }
+
+  void setTotalPoints(int points) {
+    _totalPoints = points;
+    notifyListeners();
+  }
+
+  void setClaimedToday(bool claimed) {
+    _hasClaimedToday = claimed;
+    notifyListeners();
+  }
+
   Future<void> checkIfClaimedToday(String date, DatabaseService databaseService) async {
     final prefs = await SharedPreferences.getInstance();
     final lastChecked = prefs.getString('lastClaimCheckedDate') ?? '';
@@ -72,7 +93,7 @@ class StepTracker with ChangeNotifier {
         notifyListeners();
       }
     } catch (e) {
-      debugPrint('❌ checkIfClaimedToday: $e');
+      debugPrint('❌ checkIfClaimedToday: \$e');
     }
   }
 
@@ -101,14 +122,13 @@ class StepTracker with ChangeNotifier {
           onPedestrianStatusError: _handlePedStatusError,
         );
       } else {
-        // emulator fallback to ensure new day check
         _handleStepCount(_currentSteps);
       }
 
       _startSyncTimer();
       _safeNotifyListeners();
     } catch (e) {
-      debugPrint('❌ Initialization failed: $e');
+      debugPrint('❌ Initialization failed: \$e');
     }
   }
 
@@ -199,7 +219,7 @@ class StepTracker with ChangeNotifier {
       await _databaseService.saveTotalPoints(_totalPoints);
       _safeNotifyListeners();
     } catch (e) {
-      debugPrint('❌ Redeem failed: $e');
+      debugPrint('❌ Redeem failed: \$e');
     }
     return dailyRedemptionCap;
   }
@@ -216,17 +236,17 @@ class StepTracker with ChangeNotifier {
   }
 
   void _handleStepError(dynamic error) {
-    debugPrint('Step count error: $error');
+    debugPrint('Step count error: \$error');
     _isPedometerAvailable = false;
     _safeNotifyListeners();
   }
 
   void _handlePedStatus(String status) {
-    debugPrint('Pedestrian status: $status');
+    debugPrint('Pedestrian status: \$status');
   }
 
   void _handlePedStatusError(dynamic error) {
-    debugPrint('Pedestrian status error: $error');
+    debugPrint('Pedestrian status error: \$error');
     _isPedometerAvailable = false;
     _safeNotifyListeners();
   }
