@@ -27,29 +27,59 @@ class HomePageContentState extends State<HomePageContent> {
 
   Future<void> _loadData() async {
     debugPrint("🔁 _loadData called");
-    if (_hasLoadedData) return; // ✅ early exit if already loaded
-
-    final stepTracker = Provider.of<StepTracker>(context, listen: false);
-    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-
-    try {
-      final data = await stepTracker.databaseService
-          .getDailyStatsStream(today)
-          .first
-          .timeout(const Duration(seconds: 5));
-      if (data != null) {
-        stepTracker.setCurrentSteps(data['steps'] ?? 0);
-        stepTracker.setCurrentStreak(data['streak'] ?? 0);
-        stepTracker.setTotalPoints(data['totalPoints'] ?? 0);
-        stepTracker.setClaimedToday(data['redeemed'] == true);
-      }
-      _hasLoadedData = true; // ✅ mark as loaded only after success
-    } catch (e) {
-      debugPrint('⚠️ Error loading data: $e');
-    } finally {
+    if (_hasLoadedData) {
+      debugPrint("⏩ Skipping _loadData (already loaded)");
       if (mounted) {
         setState(() {
           _isLoading = false;
+        });
+      }
+      return;
+    }
+
+    final stepTracker = Provider.of<StepTracker>(context, listen: false);
+    final today = DateFormat('yyyy-MM-dd').format(DateTime.now().toLocal()); // Use toLocal() for consistency
+
+    try {
+      // Call the new public method in StepTracker
+      // This method already handles getting data once, so no .first or .timeout is needed here.
+      final data = await stepTracker.getDailyStatsForUI(today);
+      debugPrint(data != null ? "📦 Firestore data received" : "🚫 No data found for today");
+      if (data != null) {
+        debugPrint("👣 Steps: ${data['steps']}, 🔥 Streak: ${data['streak']}, 🎯 Daily Points: ${data['dailyPointsEarned']}");
+        stepTracker.setCurrentSteps(data['steps'] ?? 0);
+        stepTracker.setCurrentStreak(data['streak'] ?? 0);
+        // IMPORTANT: Ensure 'dailyPointsEarned' is used if that's what's stored in dailyStats
+        // 'totalPoints' is usually the overall accumulated points, loaded from userProfiles.
+        // If 'totalPoints' in this context means 'daily points earned for today',
+        // then data['dailyPointsEarned'] would be more appropriate if your DB stores it that way.
+        stepTracker.setTotalPoints(data['dailyPointsEarned'] ?? 0); // Corrected to fetch daily points earned
+        stepTracker.setClaimedToday(data['redeemed'] == true);
+      } else {
+        // If data is null (e.g., no daily record for today yet), ensure UI reflects zero for the day.
+        stepTracker.setCurrentSteps(0);
+        // Streak and total points (overall) are loaded in _loadBaseline and _loadPoints, not necessarily from daily stats doc.
+        // So, do not set them to 0 here unless that's your explicit design for a day with no record.
+        stepTracker.setClaimedToday(false); // No record means not claimed.
+      }
+
+      // ✅ Mark as loaded even if data is null
+      _hasLoadedData = true;
+    } catch (e, stackTrace) { // Added stackTrace for better debugging
+      debugPrint('⚠️ Error loading data: $e');
+      debugPrint('Stack Trace: $stackTrace'); // Log stack trace
+      // Ensure _isLoading is set to false even on error
+      if (mounted) {
+        setState(() {
+          _isLoading = false; // Important: ensure loading state is false
+          debugPrint("✅ Done: isLoading = $_isLoading");
+        });
+      }
+    } finally {
+      if (mounted) {
+        debugPrint("✅ Done: isLoading = false");
+        setState(() {
+          _isLoading = false; // Ensure this is always reached and updates UI
           _oldSteps = stepTracker.currentSteps;
         });
       }
