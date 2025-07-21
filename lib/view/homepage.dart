@@ -4,6 +4,7 @@ import 'package:myapp/features/step_gauge.dart';
 import 'package:myapp/features/step_tracker.dart';
 import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
+import 'package:flutter/foundation.dart'; // Import kDebugMode
 
 class HomePageContent extends StatefulWidget {
   const HomePageContent({super.key});
@@ -13,15 +14,15 @@ class HomePageContent extends StatefulWidget {
 }
 
 class HomePageContentState extends State<HomePageContent> {
-  int _oldSteps = 0;
-  bool _isLoading = true;
-  bool _hasLoadedData = false;
+  int _oldSteps = 0; // Used for TweenAnimationBuilder's 'begin' value
+  bool _isLoading = true; // Controls shimmer visibility
+  bool _hasLoadedData = false; // Prevents redundant initial data loads
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadData();
+      _loadData(); // Trigger data loading after the first frame
     });
   }
 
@@ -30,6 +31,7 @@ class HomePageContentState extends State<HomePageContent> {
     if (_hasLoadedData) {
       debugPrint("⏩ Skipping _loadData (already loaded)");
       if (mounted) {
+        // Ensure _isLoading is false if already loaded and we're skipping
         setState(() {
           _isLoading = false;
         });
@@ -37,50 +39,41 @@ class HomePageContentState extends State<HomePageContent> {
       return;
     }
 
+    // Get StepTracker instance without listening to avoid unnecessary rebuilds during data loading
     final stepTracker = Provider.of<StepTracker>(context, listen: false);
-    final today = DateFormat('yyyy-MM-dd').format(DateTime.now().toLocal()); // Use toLocal() for consistency
+    final today = DateFormat('yyyy-MM-dd').format(DateTime.now().toLocal());
 
     try {
-      // Call the new public method in StepTracker
-      // This method already handles getting data once, so no .first or .timeout is needed here.
       final data = await stepTracker.getDailyStatsForUI(today);
       debugPrint(data != null ? "📦 Firestore data received" : "🚫 No data found for today");
+
       if (data != null) {
         debugPrint("👣 Steps: ${data['steps']}, 🔥 Streak: ${data['streak']}, 🎯 Daily Points: ${data['dailyPointsEarned']}");
         stepTracker.setCurrentSteps(data['steps'] ?? 0);
         stepTracker.setCurrentStreak(data['streak'] ?? 0);
-        // IMPORTANT: Ensure 'dailyPointsEarned' is used if that's what's stored in dailyStats
-        // 'totalPoints' is usually the overall accumulated points, loaded from userProfiles.
-        // If 'totalPoints' in this context means 'daily points earned for today',
-        // then data['dailyPointsEarned'] would be more appropriate if your DB stores it that way.
-        stepTracker.setTotalPoints(data['dailyPointsEarned'] ?? 0); // Corrected to fetch daily points earned
+        // Do NOT set _totalPoints here. _totalPoints is overall and loaded in _loadPoints()
+        // stepTracker.setTotalPoints(data['dailyPointsEarned'] ?? 0); // REMOVE THIS LINE
         stepTracker.setClaimedToday(data['redeemed'] == true);
       } else {
-        // If data is null (e.g., no daily record for today yet), ensure UI reflects zero for the day.
+        // If no data for today, initialize daily relevant UI state to zero/false
         stepTracker.setCurrentSteps(0);
-        // Streak and total points (overall) are loaded in _loadBaseline and _loadPoints, not necessarily from daily stats doc.
-        // So, do not set them to 0 here unless that's your explicit design for a day with no record.
-        stepTracker.setClaimedToday(false); // No record means not claimed.
+        stepTracker.setClaimedToday(false);
+        // Streak and total points (overall) are loaded by StepTracker's _loadBaseline and _loadPoints,
+        // so no need to set them to 0 here for a fresh day's record.
       }
 
-      // ✅ Mark as loaded even if data is null
-      _hasLoadedData = true;
-    } catch (e, stackTrace) { // Added stackTrace for better debugging
+      _hasLoadedData = true; // Mark as loaded only after successful data processing
+    } catch (e, stackTrace) {
       debugPrint('⚠️ Error loading data: $e');
-      debugPrint('Stack Trace: $stackTrace'); // Log stack trace
-      // Ensure _isLoading is set to false even on error
-      if (mounted) {
-        setState(() {
-          _isLoading = false; // Important: ensure loading state is false
-          debugPrint("✅ Done: isLoading = $_isLoading");
-        });
-      }
+      debugPrint('Stack Trace: $stackTrace');
     } finally {
+      // Always ensure loading state is false when operation completes, regardless of success/failure
       if (mounted) {
-        debugPrint("✅ Done: isLoading = false");
         setState(() {
-          _isLoading = false; // Ensure this is always reached and updates UI
+          _isLoading = false;
+          // Set _oldSteps here to ensure animation starts from current displayed steps
           _oldSteps = stepTracker.currentSteps;
+          debugPrint("✅ Data loading complete. isLoading = $_isLoading, _oldSteps = $_oldSteps");
         });
       }
     }
@@ -89,6 +82,7 @@ class HomePageContentState extends State<HomePageContent> {
 
   @override
   Widget build(BuildContext context) {
+    // Listen to StepTracker for UI updates
     final stepTracker = Provider.of<StepTracker>(context);
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
@@ -96,47 +90,51 @@ class HomePageContentState extends State<HomePageContent> {
     return SafeArea(
       child: RefreshIndicator(
         onRefresh: () async {
+          // Reset _hasLoadedData to false to force a full reload from DB
+          _hasLoadedData = false;
           setState(() => _isLoading = true);
           await _loadData();
         },
         child: _isLoading
             ? _buildShimmer(screenHeight)
             : SingleChildScrollView(
-                padding: EdgeInsets.symmetric(
-                  horizontal: screenWidth * 0.05,
-                  vertical: screenHeight * 0.001,
+          padding: EdgeInsets.symmetric(
+            horizontal: screenWidth * 0.05,
+            vertical: screenHeight * 0.001,
+          ),
+          physics: const AlwaysScrollableScrollPhysics(), // Allows pull-to-refresh even with short content
+          child: Column(
+            children: [
+              // Display debug/emulator mode banner only in debug builds
+              if (kDebugMode) // Use kDebugMode
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  margin: const EdgeInsets.only(bottom: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.deepPurple.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text(
+                    '🧪 Debug Mode Active', // Clarified text
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.deepPurple,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
-                physics: const AlwaysScrollableScrollPhysics(),
-                child: Column(
-                  children: [
-                    if (!stepTracker.isPhysicalDevice)
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(10),
-                        margin: const EdgeInsets.only(bottom: 10),
-                        decoration: BoxDecoration(
-                          color: Colors.deepPurple.shade100,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Text(
-                          '🧪 Emulator Mode Active',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Colors.deepPurple,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    _buildGauge(screenWidth, stepTracker),
-                    _buildSummaryCards(stepTracker),
-                    const SizedBox(height: 20),
-                    _buildClaimButton(stepTracker, screenWidth),
-                    const SizedBox(height: 20),
-                    if (!stepTracker.isPhysicalDevice)
-                      _buildEmulatorControls(context),
-                  ],
-                ),
-              ),
+              _buildGauge(screenWidth, stepTracker),
+              _buildSummaryCards(stepTracker),
+              const SizedBox(height: 20),
+              _buildClaimButton(stepTracker, screenWidth),
+              const SizedBox(height: 20),
+              // Display emulator controls only in debug builds
+              if (kDebugMode) // Use kDebugMode
+                _buildEmulatorControls(context),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -151,7 +149,7 @@ class HomePageContentState extends State<HomePageContent> {
           child: Column(
             children: List.generate(
               3,
-              (index) => Container(
+                  (index) => Container(
                 margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 height: 100,
                 decoration: BoxDecoration(
@@ -193,7 +191,7 @@ class HomePageContentState extends State<HomePageContent> {
         const SizedBox(width: 12),
         Expanded(
           child: _buildCard(Icons.monetization_on, 'Points Earned',
-              '${tracker.dailyPoints} / ${StepTracker.maxDailyPoints}'),
+              '${tracker.dailyPointsEarned} / ${StepTracker.maxDailyPoints}'),
         ),
       ],
     );
@@ -225,28 +223,27 @@ class HomePageContentState extends State<HomePageContent> {
     return SizedBox(
       width: width * 0.75,
       child: ElevatedButton(
-        onPressed: tracker.dailyPoints >= StepTracker.maxDailyPoints &&
-                !tracker.hasClaimedToday
+        onPressed: tracker.dailyPointsEarned >= StepTracker.maxDailyPoints &&
+            !tracker.hasClaimedToday
             ? () async {
-                final today =
-                    DateFormat('yyyy-MM-dd').format(DateTime.now());
-                final success = await tracker.claimDailyPoints(today);
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(success
-                        ? '🎉 Claimed 100 Daily Points!'
-                        : '⚠️ Already claimed or error occurred'),
-                  ),
-                );
-              }
+          final successAmount = await tracker.redeemPoints(); // redeemPoints returns int (amount redeemed)
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                  successAmount > 0 // Check if more than 0 points were redeemed
+                      ? '🎉 Claimed $successAmount Daily Points!'
+                      : '⚠️ Already claimed or error occurred'),
+            ),
+          );
+        }
             : null,
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.deepOrange,
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(vertical: 14),
           shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -269,9 +266,7 @@ class HomePageContentState extends State<HomePageContent> {
   Widget _buildEmulatorControls(BuildContext context) {
     return Column(
       children: [
-        const Text('🧪 Emulator Mode Active!',
-            style: TextStyle(
-                fontWeight: FontWeight.bold, color: Colors.deepPurple)),
+        // Text is now managed by the main build method for consistency
         const SizedBox(height: 10),
         ElevatedButton(
           onPressed: () {
@@ -285,11 +280,11 @@ class HomePageContentState extends State<HomePageContent> {
             backgroundColor: Colors.blueGrey,
             foregroundColor: Colors.white,
             padding:
-                const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
-          child: const Text('➕ Add 1000 Mock Steps (Emulator Only)'),
+          child: const Text('➕ Add 1000 Mock Steps (Debug Only)'), // Clarified text
         ),
       ],
     );
