@@ -27,8 +27,9 @@ void main() async {
     await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
     await FirebaseAuth.instance.signInAnonymously();
     debugPrint('✅ Firebase initialized and signed in anonymously.');
-  } catch (e) {
+  } catch (e, stacktrace) {
     debugPrint('❌ Firebase initialization error: $e');
+    debugPrint('🔍 Stacktrace: $stacktrace');
   }
 
   tz.initializeTimeZones();
