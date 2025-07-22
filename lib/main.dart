@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:myapp/features/bottomnavigation.dart';
 import 'package:myapp/features/step_tracker.dart';
 import 'package:myapp/theme/app_theme.dart';
 import 'package:myapp/services/notification_service.dart';
 import 'package:myapp/view/splash_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
@@ -25,11 +23,10 @@ void main() async {
 
   try {
     await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-    await FirebaseAuth.instance.signInAnonymously();
-    debugPrint('✅ Firebase initialized and signed in anonymously.');
-  } catch (e, stacktrace) {
+    //await FirebaseAuth.instance.signInAnonymously();
+    debugPrint('✅ Firebase initialized.');
+  } catch (e) {
     debugPrint('❌ Firebase initialization error: $e');
-    debugPrint('🔍 Stacktrace: $stacktrace');
   }
 
   tz.initializeTimeZones();
@@ -48,7 +45,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'LoopXP',
+      title: 'Steps4',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
       home: const SplashScreen(),

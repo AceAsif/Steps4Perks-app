@@ -1,8 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:myapp/features/bottomnavigation.dart'; // Your main navigation
-import 'package:myapp/features/step_tracker.dart';     // Your StepTracker
-// No direct Firebase/Firestore imports here, as StepTracker handles it
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -23,7 +20,7 @@ class _SplashScreenState extends State<SplashScreen> {
     // Access StepTracker via Provider.
     // Its constructor calls _init() which handles permission, pedometer,
     // and crucially, loads data from DatabaseService (Firestore).
-    final stepTracker = Provider.of<StepTracker>(context, listen: false);
+    //final stepTracker = Provider.of<StepTracker>(context, listen: false);
 
     // Give StepTracker time to initialize and load data, including from Firestore.
     // Since StepTracker's _init() is called in its constructor, and it already

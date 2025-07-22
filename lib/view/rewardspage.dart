@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+
 import 'package:myapp/features/step_tracker.dart';
+import 'package:myapp/view/rewardshistory.dart';
+import 'package:myapp/services/database_service.dart';
 
-// --- NEW: Import the separate RewardHistoryPage ---
-import 'package:myapp/view/rewardshistory.dart'; // Import the new file
-
-class RewardsPage extends StatefulWidget { // Keep this as StatefulWidget if it manages DefaultTabController
+class RewardsPage extends StatefulWidget {
   const RewardsPage({super.key});
 
   @override
@@ -13,18 +14,12 @@ class RewardsPage extends StatefulWidget { // Keep this as StatefulWidget if it 
 }
 
 class _RewardsPageState extends State<RewardsPage> {
-  // If RewardsPage itself doesn't need a stream, you can remove _redeemedRewardsStream here.
-  // The RewardHistoryPage will manage its own stream.
+  final String today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+  final DatabaseService _databaseService = DatabaseService();
 
   @override
   Widget build(BuildContext context) {
     final stepTracker = Provider.of<StepTracker>(context);
-    // final databaseService = DatabaseService(); // No longer needed directly here
-    // final currentUserId = databaseService.currentUserId; // No longer needed directly here
-
-    // The check for currentUserId should ideally be handled at a higher level
-    // (e.g., a wrapper around Bottomnavigation) or within RewardHistoryPage itself.
-    // For now, RewardHistoryPage will handle its own check.
 
     return DefaultTabController(
       length: 2,
@@ -40,7 +35,7 @@ class _RewardsPageState extends State<RewardsPage> {
         ),
         body: TabBarView(
           children: [
-            // Available Rewards Tab (your existing content)
+            // Tab 1: Available Rewards
             SingleChildScrollView(
               padding: const EdgeInsets.all(16.0),
               child: Column(
@@ -50,6 +45,8 @@ class _RewardsPageState extends State<RewardsPage> {
                     style: Theme.of(context).textTheme.headlineSmall,
                   ),
                   const SizedBox(height: 20),
+
+                  /// 🔹 Gift Card Redemption Card
                   Card(
                     child: ListTile(
                       leading: const Icon(Icons.card_giftcard),
@@ -58,10 +55,15 @@ class _RewardsPageState extends State<RewardsPage> {
                       trailing: ElevatedButton(
                         onPressed: stepTracker.canRedeemPoints
                             ? () async {
-                                final int redeemedAmount = await stepTracker.redeemPoints();
+                                final int redeemedAmount =
+                                    await stepTracker.redeemPoints();
                                 if (context.mounted) {
-                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text('Redeemed $redeemedAmount points for gift card!')),
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        'Redeemed $redeemedAmount points for gift card!',
+                                      ),
+                                    ),
                                   );
                                 }
                               }
@@ -73,8 +75,9 @@ class _RewardsPageState extends State<RewardsPage> {
                 ],
               ),
             ),
-            // History Tab: Use the new RewardHistoryPage
-            const RewardHistoryPage(), // <-- NEW: Use your separate history page
+
+            // Tab 2: Rewards History
+            const RewardHistoryPage(),
           ],
         ),
       ),

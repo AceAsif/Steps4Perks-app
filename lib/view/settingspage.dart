@@ -7,9 +7,7 @@ class SettingsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Settings'),
-      ),
+      appBar: AppBar(title: const Text('Settings')),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -30,7 +28,9 @@ class SettingsPage extends StatelessWidget {
                   hour: 7,
                   minute: 30,
                 );
-                _showSnackBar(context, 'Morning reminder scheduled!');
+                if (context.mounted) {
+                  _showSnackBar(context, 'Morning reminder scheduled!');
+                }
               },
               icon: const Icon(Icons.wb_sunny),
               label: const Text('Schedule Morning Reminder'),
@@ -47,7 +47,9 @@ class SettingsPage extends StatelessWidget {
                   hour: 12,
                   minute: 30,
                 );
-                _showSnackBar(context, 'Lunch reminder scheduled!');
+                if (context.mounted) {
+                  _showSnackBar(context, 'Lunch reminder scheduled!');
+                }
               },
               icon: const Icon(Icons.lunch_dining),
               label: const Text('Schedule Lunch Reminder'),
@@ -64,7 +66,9 @@ class SettingsPage extends StatelessWidget {
                   hour: 19,
                   minute: 0,
                 );
-                _showSnackBar(context, 'Evening reminder scheduled!');
+                if (context.mounted) {
+                  _showSnackBar(context, 'Evening reminder scheduled!');
+                }
               },
               icon: const Icon(Icons.nightlight_round),
               label: const Text('Schedule Evening Reminder'),
@@ -76,8 +80,8 @@ class SettingsPage extends StatelessWidget {
   }
 
   void _showSnackBar(BuildContext context, String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 }

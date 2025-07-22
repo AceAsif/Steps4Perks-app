@@ -1,3 +1,5 @@
+//This feature will be added to the code later.
+/*
 import 'package:flutter/material.dart'; // For debugPrint
 import 'dart:async'; // For Completer
 
@@ -48,3 +50,4 @@ class AdService {
     _adLoaded = true; // Keep it true
   }
 }
+*/

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:myapp/features/step_gauge.dart'; // Assuming StepGauge is a separate widget for the circular progress
+import 'package:intl/intl.dart';
+import 'package:myapp/features/step_gauge.dart';
 import 'package:myapp/features/step_tracker.dart';
 import 'package:provider/provider.dart';
-import 'package:myapp/services/ad_service.dart'; // Import AdService (now the mocked one)
+import 'package:shimmer/shimmer.dart';
+import 'package:flutter/foundation.dart'; // Import kDebugMode
 
 class HomePageContent extends StatefulWidget {
   const HomePageContent({super.key});
@@ -12,298 +14,279 @@ class HomePageContent extends StatefulWidget {
 }
 
 class HomePageContentState extends State<HomePageContent> {
-  int _oldSteps = 0;
-  final AdService _adService =
-      AdService(); // Get instance of AdService (the mocked one)
+  int _oldSteps = 0; // Used for TweenAnimationBuilder's 'begin' value
+  bool _isLoading = true; // Controls shimmer visibility
+  bool _hasLoadedData = false; // Prevents redundant initial data loads
 
   @override
   void initState() {
     super.initState();
-    _adService
-        .loadRewardedAd(); // Start loading a mock ad as soon as the page loads
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadData(); // Trigger data loading after the first frame
+    });
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
+  Future<void> _loadData() async {
+    debugPrint("🔁 _loadData called");
+    if (_hasLoadedData) {
+      debugPrint("⏩ Skipping _loadData (already loaded)");
+      if (mounted) {
+        // Ensure _isLoading is false if already loaded and we're skipping
+        setState(() {
+          _isLoading = false;
+        });
+      }
+      return;
+    }
+
+    // Get StepTracker instance without listening to avoid unnecessary rebuilds during data loading
     final stepTracker = Provider.of<StepTracker>(context, listen: false);
-    if (mounted) {
-      _oldSteps = stepTracker.currentSteps;
+    final today = DateFormat('yyyy-MM-dd').format(DateTime.now().toLocal());
+
+    try {
+      final data = await stepTracker.getDailyStatsForUI(today);
+      debugPrint(data != null ? "📦 Firestore data received" : "🚫 No data found for today");
+
+      if (data != null) {
+        debugPrint("👣 Steps: ${data['steps']}, 🔥 Streak: ${data['streak']}, 🎯 Daily Points: ${data['dailyPointsEarned']}");
+        stepTracker.setCurrentSteps(data['steps'] ?? 0);
+        stepTracker.setCurrentStreak(data['streak'] ?? 0);
+        // Do NOT set _totalPoints here. _totalPoints is overall and loaded in _loadPoints()
+        // stepTracker.setTotalPoints(data['dailyPointsEarned'] ?? 0); // REMOVE THIS LINE
+        stepTracker.setClaimedToday(data['redeemed'] == true);
+      } else {
+        // If no data for today, initialize daily relevant UI state to zero/false
+        stepTracker.setCurrentSteps(0);
+        stepTracker.setClaimedToday(false);
+        // Streak and total points (overall) are loaded by StepTracker's _loadBaseline and _loadPoints,
+        // so no need to set them to 0 here for a fresh day's record.
+      }
+
+      _hasLoadedData = true; // Mark as loaded only after successful data processing
+    } catch (e, stackTrace) {
+      debugPrint('⚠️ Error loading data: $e');
+      debugPrint('Stack Trace: $stackTrace');
+    } finally {
+      // Always ensure loading state is false when operation completes, regardless of success/failure
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          // Set _oldSteps here to ensure animation starts from current displayed steps
+          _oldSteps = stepTracker.currentSteps;
+          debugPrint("✅ Data loading complete. isLoading = $_isLoading, _oldSteps = $_oldSteps");
+        });
+      }
     }
   }
 
-  @override
-  void dispose() {
-    _adService.dispose(); // Dispose the mock ad when the widget is disposed
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
+    // Listen to StepTracker for UI updates
     final stepTracker = Provider.of<StepTracker>(context);
-    final currentSteps = stepTracker.currentSteps;
-    final totalPoints = stepTracker.totalPoints;
-    final currentStreak = stepTracker.currentStreak;
-
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
 
-    final bodyTextColor =
-        Theme.of(context).textTheme.bodyLarge?.color ?? Colors.black;
-    final subtitleColor =
-        Theme.of(context).textTheme.bodyMedium?.color ?? Colors.black87;
-
-    // Check if user can redeem points AND if a mock ad is "ready"
-    final bool canActivateRedeemButton =
-        stepTracker.canRedeemPoints && _adService.isAdReady;
-    // Show loading indicator if points are met but mock ad isn't "ready"
-    final bool showAdLoadingIndicator =
-        stepTracker.canRedeemPoints && !_adService.isAdReady;
-
     return SafeArea(
-      child: SingleChildScrollView(
-        padding: EdgeInsets.symmetric(
-          horizontal: screenWidth * 0.05,
-          vertical: screenHeight * 0.001,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            _buildGauge(
-              screenWidth,
-              screenHeight,
-              currentSteps,
-              bodyTextColor,
-              subtitleColor,
-            ),
-            _buildSummaryCards(stepTracker, bodyTextColor, subtitleColor),
-
-            SizedBox(height: screenHeight * 0.03),
-
-            // --- Redeem Points Button ---
-            SizedBox(
-              width: screenWidth * 0.75,
-              child: ElevatedButton(
-                onPressed:
-                    canActivateRedeemButton
-                        ? () async {
-                          debugPrint(
-                            'Redeem button pressed. Showing mock ad...',
-                          );
-                          final bool adWatchedSuccessfully =
-                              await _adService.showRewardedAd(); // Call mock ad
-
-                          if (!mounted) return; // Check mounted after async gap
-
-                          if (adWatchedSuccessfully) {
-                            debugPrint(
-                              'Mock Ad watched successfully! Proceeding with redemption.',
-                            );
-                            final int redeemedAmount =
-                                await stepTracker
-                                    .redeemPoints(); // Call redeemPoints method
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    'Redeemed $redeemedAmount points after "watching" ad!',
-                                  ),
-                                ),
-                              );
-                            }
-                          } else {
-                            debugPrint(
-                              'Mock Ad was not "watched" successfully or "failed". Redemption aborted.',
-                            );
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    'Mock Ad not completed. Redemption failed.',
-                                  ),
-                                ),
-                              );
-                            }
-                          }
-                        }
-                        : null, // Button is disabled if not enough points OR mock ad not "ready"
-                style: ElevatedButton.styleFrom(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(30),
+      child: RefreshIndicator(
+        onRefresh: () async {
+          // Reset _hasLoadedData to false to force a full reload from DB
+          _hasLoadedData = false;
+          setState(() => _isLoading = true);
+          await _loadData();
+        },
+        child: _isLoading
+            ? _buildShimmer(screenHeight)
+            : SingleChildScrollView(
+          padding: EdgeInsets.symmetric(
+            horizontal: screenWidth * 0.05,
+            vertical: screenHeight * 0.001,
+          ),
+          physics: const AlwaysScrollableScrollPhysics(), // Allows pull-to-refresh even with short content
+          child: Column(
+            children: [
+              // Display debug/emulator mode banner only in debug builds
+              if (kDebugMode) // Use kDebugMode
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  margin: const EdgeInsets.only(bottom: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.deepPurple.shade100,
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  backgroundColor: Colors.deepOrange,
-                  foregroundColor: Colors.white,
-                  elevation: 5,
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.card_giftcard, size: 24),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Redeem Points (${stepTracker.totalPoints} / ${StepTracker.dailyRedemptionCap} daily)', // Updated button text
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
-                    if (showAdLoadingIndicator) // Show loading indicator if mock ad is not "ready"
-                      const Padding(
-                        padding: EdgeInsets.only(left: 8.0),
-                        child: SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              Colors.white,
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-
-            SizedBox(height: screenHeight * 0.03),
-
-            // --- Mock Steps Button (for emulator testing) ---
-            if (!stepTracker.isPedometerAvailable)
-              Padding(
-                padding: const EdgeInsets.only(top: 20.0),
-                child: ElevatedButton(
-                  onPressed: () {
-                    Provider.of<StepTracker>(
-                      context,
-                      listen: false,
-                    ).addMockSteps(1000);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Added 1000 mock steps!')),
-                    );
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blueGrey,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 12,
-                      horizontal: 20,
+                  child: const Text(
+                    '🧪 Debug Mode Active', // Clarified text
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.deepPurple,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                  child: const Text('➕ Add 1000 Mock Steps (Emulator Only)'),
                 ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildGauge(
-    double screenWidth,
-    double screenHeight,
-    int currentSteps,
-    Color bodyTextColor,
-    Color subtitleColor,
-  ) {
-    return SizedBox(
-      width: screenWidth * 0.65,
-      height: screenWidth * 0.65,
-      child: TweenAnimationBuilder<double>(
-        tween: Tween<double>(
-          begin: _oldSteps.toDouble(),
-          end: currentSteps.toDouble(),
-        ),
-        duration: const Duration(milliseconds: 600),
-        builder: (context, value, child) {
-          return StepGauge(currentSteps: value.toInt());
-        },
-        onEnd: () {
-          _oldSteps = currentSteps;
-        },
-      ),
-    );
-  }
-
-  Widget _buildSummaryCards(
-    StepTracker stepTracker,
-    Color bodyTextColor,
-    Color subtitleColor,
-  ) {
-    return Row(
-      children: [
-        Expanded(
-          child: _buildCard(
-            context: context,
-            icon: Icons.local_fire_department,
-            label: 'Daily Streak',
-            value: '${stepTracker.currentStreak}',
-            showFireIcon: true,
-            bodyTextColor: bodyTextColor,
-            subtitleColor: subtitleColor,
+              _buildGauge(screenWidth, stepTracker),
+              _buildSummaryCards(stepTracker),
+              const SizedBox(height: 20),
+              _buildClaimButton(stepTracker, screenWidth),
+              const SizedBox(height: 20),
+              // Display emulator controls only in debug builds
+              if (kDebugMode) // Use kDebugMode
+                _buildEmulatorControls(context),
+            ],
           ),
         ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _buildCard(
-            context: context,
-            icon: Icons.monetization_on,
-            label: 'Points Earned',
-            value: '${stepTracker.dailyPoints} / ${StepTracker.maxDailyPoints}',
-            showFireIcon: false,
-            bodyTextColor: bodyTextColor,
-            subtitleColor: subtitleColor,
+      ),
+    );
+  }
+
+  Widget _buildShimmer(double screenHeight) {
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      children: [
+        Shimmer.fromColors(
+          baseColor: Colors.grey[300]!,
+          highlightColor: Colors.grey[100]!,
+          child: Column(
+            children: List.generate(
+              3,
+                  (index) => Container(
+                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                height: 100,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildCard({
-    required BuildContext context,
-    required IconData icon,
-    required String label,
-    required String value,
-    bool showFireIcon = false,
-    required Color bodyTextColor,
-    required Color subtitleColor,
-  }) {
-    final screenWidth = MediaQuery.of(context).size.width;
+  Widget _buildGauge(double screenWidth, StepTracker tracker) {
+    return SizedBox(
+      width: screenWidth * 0.65,
+      height: screenWidth * 0.65,
+      child: TweenAnimationBuilder<double>(
+        tween: Tween<double>(
+          begin: _oldSteps.toDouble(),
+          end: tracker.currentSteps.toDouble(),
+        ),
+        duration: const Duration(milliseconds: 600),
+        builder: (context, value, child) =>
+            StepGauge(currentSteps: value.toInt()),
+        onEnd: () => _oldSteps = tracker.currentSteps,
+      ),
+    );
+  }
 
+  Widget _buildSummaryCards(StepTracker tracker) {
+    return Row(
+      children: [
+        Expanded(
+          child: _buildCard(
+              Icons.local_fire_department, 'Daily Streak', '${tracker.currentStreak}'),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _buildCard(Icons.monetization_on, 'Points Earned',
+              '${tracker.dailyPointsEarned} / ${StepTracker.maxDailyPoints}'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCard(IconData icon, String label, String value) {
     return Card(
       elevation: 3,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-      child: Container(
-        width: screenWidth * 0.4,
+      child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Icon(icon, size: screenWidth * 0.08, color: Colors.deepOrange),
-            SizedBox(height: screenWidth * 0.02),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: screenWidth * 0.04,
-                color: subtitleColor,
-              ),
+            Icon(icon, size: 32, color: Colors.deepOrange),
+            const SizedBox(height: 6),
+            Text(label,
+                style: const TextStyle(fontSize: 14, color: Colors.black54)),
+            const SizedBox(height: 4),
+            Text(value,
+                style: const TextStyle(
+                    fontSize: 20, fontWeight: FontWeight.bold)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildClaimButton(StepTracker tracker, double width) {
+    return SizedBox(
+      width: width * 0.75,
+      child: ElevatedButton(
+        onPressed: tracker.dailyPointsEarned >= StepTracker.maxDailyPoints &&
+            !tracker.hasClaimedToday
+            ? () async {
+          final successAmount = await tracker.redeemPoints(); // redeemPoints returns int (amount redeemed)
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                  successAmount > 0 // Check if more than 0 points were redeemed
+                      ? '🎉 Claimed $successAmount Daily Points!'
+                      : '⚠️ Already claimed or error occurred'),
             ),
-            SizedBox(height: screenWidth * 0.01),
+          );
+        }
+            : null,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.deepOrange,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape:
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.redeem, size: 24),
+            const SizedBox(width: 8),
             Text(
-              value,
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: bodyTextColor,
-              ),
+              tracker.hasClaimedToday
+                  ? '✅ 100 Points Claimed Today'
+                  : 'Claim 100 Points (Daily)',
+              style: const TextStyle(
+                  fontWeight: FontWeight.bold, fontSize: 16),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildEmulatorControls(BuildContext context) {
+    return Column(
+      children: [
+        // Text is now managed by the main build method for consistency
+        const SizedBox(height: 10),
+        ElevatedButton(
+          onPressed: () {
+            Provider.of<StepTracker>(context, listen: false)
+                .addMockSteps(1000);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Added 1000 mock steps!')),
+            );
+          },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.blueGrey,
+            foregroundColor: Colors.white,
+            padding:
+            const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          child: const Text('➕ Add 1000 Mock Steps (Debug Only)'), // Clarified text
+        ),
+      ],
     );
   }
 }

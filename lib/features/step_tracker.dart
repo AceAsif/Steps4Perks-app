@@ -1,507 +1,487 @@
-import 'package:flutter/material.dart';
-import 'package:pedometer/pedometer.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'dart:async';
+import 'package:flutter/foundation.dart'; // For kDebugMode
+import 'package:myapp/services/database_service.dart';
+import 'package:myapp/services/device_service.dart';
+import 'package:myapp/services/permission_service.dart';
+import 'package:myapp/services/pedometer_service.dart';
+import 'package:myapp/utils/streak_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
-import 'package:device_info_plus/device_info_plus.dart';
-import 'package:flutter/foundation.dart';
-import 'dart:io';
 
-// --- DatabaseService Import ---
-import 'package:myapp/services/database_service.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // To get the current authenticated user
+enum StepStatus {
+  idle,
+  syncing,
+  synced,
+  failed,
+}
 
-/// Manages step tracking, point accumulation, and daily resets for the Steps4Perks app.
-/// It integrates with the device's pedometer, SharedPreferences for local caching,
-/// and DatabaseService for persistent storage in Firestore.
 class StepTracker with ChangeNotifier {
-  /// Constants
+  // --- Constants ---
   static const int stepsPerPoint = 100;
-  static const int maxDailySteps = 10000;
-  static const int maxDailyPoints = 100; // Max points per day (10000 steps / 100 steps/point)
-  // static const int giftCardThreshold = 2500; // Removed: No longer a single threshold for gift card
-  static const int dailyRedemptionCap = 100; // NEW: Max points a user can redeem per day
+  static const int maxDailyPoints = 100; // Max points earnable from steps per day
+  static const int dailyRedemptionCap = 2500; // Max points redeemable per day
 
-  /// --- State Variables ---
-  int _currentSteps = 0; // Steps taken today relative to baseline
-  int _baseSteps = 0; // Pedometer's raw step count at the start of the day/session
-  int _totalPoints = 0; // Accumulated total points across all days
-  int _storedDailySteps = 0; // Last saved daily steps from SharedPreferences/Firestore
-  bool _isNewDay = false; // Flag to indicate if a new day has started
-
-  // Pedometer streams
-  Stream<StepCount>? _stepCountStream;
-  Stream<PedestrianStatus>? _pedestrianStatusStream;
-
-  // Pedometer availability flag
+  // --- Internal State Variables ---
+  int _rawSensorSteps = 0;      // Cumulative steps directly from the sensor/pedometer API
+  int _dailySteps = 0;          // Steps counted for the current day (0-based for the day)
+  int _dailyStepBaseline = 0;   // The _rawSensorSteps value at the start of the current day's counting
+  int _totalPoints = 0;         // Overall accumulated points
+  int _currentStreak = 0;
   bool _isPedometerAvailable = false;
+  bool _isPhysicalDevice = true; // Determined by DeviceService
+  bool _isNewDay = false;       // Flag set when a new calendar day is detected
+  int _pointsRedeemedToday = 0; // Points redeemed today from the daily cap
 
-  // --- Streak State Variables ---
-  int _currentStreak = 0; // Current consecutive daily goal achievement streak
-  String _lastGoalAchievedDate = ''; // Date (YYYY-MM-DD) when the goal was last achieved
+  bool _hasClaimedToday = false;    // Whether today's daily points have been claimed
+  String? _lastClaimCheckedDate;    // Last date we checked claim status from DB
+  StepStatus _status = StepStatus.idle; // Sync status for UI feedback
 
-  // --- NEW: Daily Redemption State Variables ---
-  int _dailyRedeemedPointsToday = 0; // Points already redeemed today
-  String _lastRedemptionDate = ''; // Date (YYYY-MM-DD) of the last redemption transaction
+  // --- Services ---
+  final _deviceService = DeviceService();
+  final _permissionService = PermissionService();
+  final _pedometerService = PedometerService();
+  final _streakManager = StreakManager();
+  final _databaseService = DatabaseService();
 
-  // --- Service Instances ---
-  final DatabaseService _databaseService = DatabaseService();
-  User? _currentUser; // Holds the current authenticated Firebase user
+  // --- Timers & Lifecycle ---
+  Timer? _syncTimer;
+  bool _isDisposed = false;
 
-  /// Public Getters
-  int get currentSteps => _currentSteps;
-  int get totalPoints => _totalPoints;
-  bool get isNewDay => _isNewDay;
-  bool get isPedometerAvailable => _isPedometerAvailable;
-  int get currentStreak => _currentStreak; // Public getter for streak
-  int get dailyRedeemedPointsToday => _dailyRedeemedPointsToday; // NEW: Getter for points redeemed today
-
-  /// Computed daily points (max 100)
-  int get dailyPoints {
-    final cappedSteps = _currentSteps.clamp(0, maxDailySteps);
-    return (cappedSteps / stepsPerPoint).floor().clamp(0, maxDailyPoints);
-  }
-
-  /// Computed live total points (includes today's yet-unsaved new points)
-  int get computedTotalPoints {
-    final currentDailyPoints = (_currentSteps.clamp(0, maxDailySteps) ~/ stepsPerPoint).clamp(0, maxDailyPoints);
-    final storedDailyPoints = (_storedDailySteps ~/ stepsPerPoint).clamp(0, maxDailyPoints);
-    final newPointsToday = currentDailyPoints - storedDailyPoints;
-    return _totalPoints + (newPointsToday > 0 ? newPointsToday : 0);
-  }
-
-  /// NEW: Check if user can redeem points (based on total points and daily cap)
-  bool get canRedeemPoints {
-    final redeemableFromTotal = _totalPoints; // Points user has
-    final remainingDailyCap = dailyRedemptionCap - _dailyRedeemedPointsToday; // Points left in daily cap
-
-    // Can redeem if user has points AND there's space in the daily cap
-    return redeemableFromTotal > 0 && remainingDailyCap > 0;
-  }
-
-  /// Constructor
+  // --- Constructor ---
   StepTracker() {
     _init();
-    // Listen for Firebase authentication state changes.
-    FirebaseAuth.instance.authStateChanges().listen((user) {
-      _currentUser = user;
-      if (user != null) {
-        debugPrint('StepTracker: User authenticated: ${user.uid}. Loading data from Database.');
-        _loadDataFromDatabase(); // Load/sync data when user logs in
-      } else {
-        debugPrint('StepTracker: User logged out or not authenticated. Resetting local state.');
-        // Reset all local state if no user is authenticated
-        _currentSteps = 0;
-        _baseSteps = 0;
-        _totalPoints = 0;
-        _storedDailySteps = 0;
-        _isNewDay = false;
-        _currentStreak = 0;
-        _lastGoalAchievedDate = '';
-        _dailyRedeemedPointsToday = 0; // Reset daily redeemed points
-        _lastRedemptionDate = ''; // Reset last redemption date
-        notifyListeners();
-      }
-    });
   }
 
-  /// Initializes the step tracker: requests permissions, loads local data,
-  /// starts pedometer listening, and syncs with Firestore if user is authenticated.
-  Future<void> _init() async {
-    await _requestPermission();
-    await _startListening();
+  // --- Public Getters for UI/External Access ---
+  int get currentSteps => _dailySteps;
+  int get totalPoints => _totalPoints;
+  int get currentStreak => _currentStreak;
+  bool get isPedometerAvailable => _isPedometerAvailable;
+  bool get isNewDay => _isNewDay;
+  bool get canRedeemPoints => (_totalPoints - _pointsRedeemedToday) >= dailyRedemptionCap;
+  bool get isPhysicalDevice => _isPhysicalDevice;
+  bool get hasClaimedToday => _hasClaimedToday;
+  String? get lastClaimCheckedDate => _lastClaimCheckedDate;
+  StepStatus get status => _status;
+  int get rawSensorSteps => _rawSensorSteps;
+  // Calculate daily points earned based on _dailySteps, clamped to maxDailyPoints
+  int get dailyPointsEarned => (_dailySteps ~/ stepsPerPoint).clamp(0, maxDailyPoints);
 
-    // Load initial data from SharedPreferences first for quick UI display.
-    await _loadBaseline();
-    await _loadPoints();
-
-    // If user is already authenticated, trigger data load/sync from Firestore.
-    if (_databaseService.currentUserId != null) {
-      await _loadDataFromDatabase();
-    }
-  }
-
-  /// Loads/Syncs user-specific data from Firestore Database.
-  /// This method listens to real-time updates from Firestore for total points,
-  /// daily stats, and user profile (for streak and redemption data).
-  Future<void> _loadDataFromDatabase() async {
-    if (_currentUser == null) {
-      debugPrint('StepTracker: Cannot load from Database, user not authenticated.');
-      return;
-    }
-
-    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-
-    // Listen to user profile for total points, streak, and daily redemption data
-    _databaseService.getUserProfile().listen((profileData) {
-      if (profileData != null) {
-        final dbTotalPoints = profileData['totalPoints'] as int? ?? 0;
-        final dbCurrentStreak = profileData['currentStreak'] as int? ?? 0;
-        final dbLastGoalAchievedDate = profileData['lastGoalAchievedDate'] as String? ?? '';
-        // --- NEW: Load daily redemption fields ---
-        final dbDailyRedeemedPointsToday = profileData['dailyRedeemedPointsToday'] as int? ?? 0;
-        final dbLastRedemptionDate = profileData['lastRedemptionDate'] as String? ?? '';
-
-        bool changed = false;
-        if (dbTotalPoints != _totalPoints) { _totalPoints = dbTotalPoints; changed = true; }
-        if (dbCurrentStreak != _currentStreak) { _currentStreak = dbCurrentStreak; changed = true; }
-        if (dbLastGoalAchievedDate != _lastGoalAchievedDate) { _lastGoalAchievedDate = dbLastGoalAchievedDate; changed = true; }
-
-        // --- NEW: Reset daily redeemed points if it's a new day ---
-        if (dbLastRedemptionDate != today) {
-          // If the last redemption was not today, reset daily redeemed points
-          if (_dailyRedeemedPointsToday != 0 || dbDailyRedeemedPointsToday != 0) {
-            _dailyRedeemedPointsToday = 0;
-            debugPrint('StepTracker: New day detected, daily redeemed points reset to 0.');
-            changed = true;
-          }
-        } else {
-          // If last redemption was today, load the value
-          if (dbDailyRedeemedPointsToday != _dailyRedeemedPointsToday) {
-            _dailyRedeemedPointsToday = dbDailyRedeemedPointsToday;
-            debugPrint('StepTracker: Loaded daily redeemed points from Database: $_dailyRedeemedPointsToday');
-            changed = true;
-          }
-        }
-        _lastRedemptionDate = dbLastRedemptionDate; // Always update last redemption date
-
-        if (changed) {
-          debugPrint('StepTracker: Profile data loaded/synced from Database.');
-          notifyListeners();
-        }
-      } else {
-        // No profile data in DB, reset local state for these fields
-        _totalPoints = 0;
-        _currentStreak = 0;
-        _lastGoalAchievedDate = '';
-        _dailyRedeemedPointsToday = 0;
-        _lastRedemptionDate = '';
-        debugPrint('StepTracker: No user profile data found in Database. Resetting local profile state.');
-        notifyListeners();
-      }
-    });
-
-    // Listen to today's daily stats from Database
-    _databaseService.getDailyStats(today).listen((dailyStats) {
-      if (dailyStats != null) {
-        final dbSteps = dailyStats['steps'] as int? ?? 0;
-        if (dbSteps != _currentSteps || dbSteps != _storedDailySteps) {
-          _currentSteps = dbSteps;
-          _storedDailySteps = dbSteps;
-          debugPrint('StepTracker: Loaded daily steps from Database: $_currentSteps');
-          notifyListeners();
-        }
-      } else {
-        debugPrint('StepTracker: No Database data for today. Resetting local daily step state.');
-        _currentSteps = 0;
-        _storedDailySteps = 0;
-        notifyListeners();
-      }
-    });
-  }
-
-
-  /// Requests the 'activityRecognition' permission.
-  /// Updates [_isPedometerAvailable] based on permission status.
-  Future<void> _requestPermission() async {
-    final status = await Permission.activityRecognition.request();
-    if (status.isPermanentlyDenied) {
-      debugPrint('Activity Recognition permission permanently denied. Guiding user to settings.');
-      await openAppSettings();
-    }
-    _isPedometerAvailable = status.isGranted;
-    if (!status.isGranted) {
-      debugPrint('Activity Recognition permission not granted.');
-    }
-    notifyListeners();
-  }
-
-  /// Load base steps and daily state from SharedPreferences.
-  /// Checks if a new day has started and resets daily steps if so.
-  /// This is important for initial load and offline consistency.
-  Future<void> _loadBaseline() async {
-    final prefs = await SharedPreferences.getInstance();
-    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-    final lastDate = prefs.getString('lastResetDate') ?? '';
-
-    if (lastDate != today) {
-      _isNewDay = true;
-      _baseSteps = -1;
-      _currentSteps = 0;
-      _storedDailySteps = 0;
-      await prefs.setInt('dailySteps', 0);
-      await prefs.setString('lastResetDate', today);
-    } else {
-      _isNewDay = false;
-      _baseSteps = prefs.getInt('baseSteps') ?? 0;
-      _storedDailySteps = prefs.getInt('dailySteps') ?? 0;
-      _currentSteps = _storedDailySteps;
-    }
-    notifyListeners();
-  }
-
-  /// Load persisted total points from SharedPreferences.
-  /// This serves as a quick local cache. The Firestore stream will provide the definitive value.
-  Future<void> _loadPoints() async {
-    final prefs = await SharedPreferences.getInstance();
-    _totalPoints = prefs.getInt('totalPoints') ?? 0;
-    notifyListeners();
-  }
-
-  /// Resets the [_isNewDay] flag, typically called after the UI has acknowledged the new day.
+  // --- Public Setters (if needed for external control/mocking in UI) ---
   void clearNewDayFlag() {
     _isNewDay = false;
-    notifyListeners();
+    _safeNotifyListeners();
   }
 
-  /// Start tracking steps by listening to pedometer streams.
-  /// This method conditionally starts listening based on device type (physical vs. emulator)
-  /// and permission status.
-  Future<void> _startListening() async {
-    bool isPhysicalDevice = true;
-    if (Platform.isAndroid) {
-      final AndroidDeviceInfo androidInfo = await DeviceInfoPlugin().androidInfo;
-      isPhysicalDevice = androidInfo.isPhysicalDevice;
-    } else if (Platform.isIOS) {
-      final IosDeviceInfo iosInfo = await DeviceInfoPlugin().iosInfo;
-      isPhysicalDevice = iosInfo.isPhysicalDevice;
+  // Note: setCurrentSteps directly sets _dailySteps.
+  // This is primarily useful for initial loading or direct mock step injection.
+  void setCurrentSteps(int steps) {
+    if (_dailySteps != steps) { // Only update if value changes
+      _dailySteps = steps;
+      _safeNotifyListeners();
     }
-
-    if (!isPhysicalDevice) {
-      debugPrint('Running on emulator/simulator, pedometer not available.');
-      _isPedometerAvailable = false;
-      notifyListeners();
-      return;
-    }
-
-    final status = await Permission.activityRecognition.status;
-    if (!status.isGranted) {
-      debugPrint('Pedometer cannot start: Activity Recognition permission not granted.');
-      _isPedometerAvailable = false;
-      notifyListeners();
-      return;
-    }
-
-    _pedestrianStatusStream = Pedometer.pedestrianStatusStream;
-    _pedestrianStatusStream?.listen(
-      _onPedestrianStatusChanged,
-      onError: _onPedestrianStatusError,
-      cancelOnError: true,
-    );
-
-    _stepCountStream = Pedometer.stepCountStream;
-    _stepCountStream?.listen(
-      _onStepCount,
-      onError: _onStepCountError,
-      cancelOnError: true,
-    );
-
-    _isPedometerAvailable = true;
-    notifyListeners();
   }
 
-  /// Handle new step data received from the pedometer sensor.
-  Future<void> _onStepCount(StepCount event) async {
+  void setCurrentStreak(int streak) {
+    if (_currentStreak != streak) {
+      _currentStreak = streak;
+      _safeNotifyListeners();
+    }
+  }
+
+  void setTotalPoints(int points) {
+    if (_totalPoints != points) {
+      _totalPoints = points;
+      _safeNotifyListeners();
+    }
+  }
+
+  void setClaimedToday(bool claimed) {
+    if (_hasClaimedToday != claimed) {
+      _hasClaimedToday = claimed;
+      _safeNotifyListeners();
+    }
+  }
+
+  // --- Initialization and Loading ---
+
+  Future<void> _init() async {
+    try {
+      _isPhysicalDevice = await _deviceService.checkIfPhysicalDevice();
+      _isPedometerAvailable = await _permissionService.requestActivityPermission();
+
+      await _loadBaselineAndStreak(); // Combined loading for clarity
+      await _loadTotalPoints();       // Load overall total points
+
+      if (_isPhysicalDevice && _isPedometerAvailable) {
+        debugPrint('✅ Starting pedometer service...');
+        _pedometerService.startListening(
+          onStepCount: _handleStepCount,
+          onStepError: _handleStepError,
+          onPedestrianStatusChanged: _handlePedStatus,
+          onPedestrianStatusError: _handlePedStatusError,
+        );
+      } else {
+        debugPrint('⚠️ Pedometer unavailable or permission denied/not a physical device. Daily steps will rely on stored data only.');
+      }
+
+      _startSyncTimer();
+      _safeNotifyListeners(); // Notify initial state after all loading
+    } catch (e, stackTrace) {
+      debugPrint('❌ Initialization failed: $e');
+      debugPrint('Stack Trace: $stackTrace');
+      _status = StepStatus.failed;
+      _safeNotifyListeners();
+    }
+  }
+
+  Future<void> _loadBaselineAndStreak() async {
     final prefs = await SharedPreferences.getInstance();
-    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final today = DateFormat('yyyy-MM-dd').format(DateTime.now().toLocal());
+    final lastDate = prefs.getString('lastResetDate') ?? '';
 
-    if (prefs.getString('lastResetDate') != today) {
-      await _loadBaseline();
-    }
+    debugPrint('📊 Evaluating streak and loading baseline for $today...');
 
-    if (_baseSteps == -1) {
-      _baseSteps = event.steps;
+    if (lastDate != today) {
+      debugPrint('🔄 New day detected. Resetting daily stats and evaluating streak.');
+      _isNewDay = true;
+      _dailySteps = 0; // Reset daily steps
+      _dailyStepBaseline = 0; // Reset baseline, will be set by first sensor reading
+      await prefs.setInt('dailySteps', 0);
+      await prefs.setInt('dailyStepBaseline', 0);
+      await prefs.remove('lastRecordedRawSensorSteps'); // Clear this for a clean start
+
+      // Evaluate streak for the *previous* day's performance based on its stored steps
+      _currentStreak = await _streakManager.evaluate(today, prefs, 0); // Streak manager should read prev day's steps from prefs/DB
       await prefs.setString('lastResetDate', today);
-      await prefs.setInt('baseSteps', _baseSteps);
-      _currentSteps = 0;
+      await prefs.setInt('currentStreak', _currentStreak); // Save the new streak
+      setClaimedToday(false); // New day, so not claimed yet
     } else {
-      _currentSteps = event.steps - _baseSteps;
-      if (_currentSteps < 0) _currentSteps = 0;
+      // Same day, load existing data
+      _dailySteps = prefs.getInt('dailySteps') ?? 0;
+      _dailyStepBaseline = prefs.getInt('dailyStepBaseline') ?? 0;
+      _currentStreak = prefs.getInt('currentStreak') ?? 0;
+      debugPrint('📅 Same day. Loaded dailySteps: $_dailySteps, baseline: $_dailyStepBaseline, streak: $_currentStreak');
     }
 
-    await _updatePointsAndSaveToDatabase();
-    notifyListeners();
+    await _checkIfClaimedToday(today); // Use internal method
   }
 
-  /// Update point state and persist daily steps to SharedPreferences and Database.
-  /// This method also handles the daily streak calculation and saving.
-  Future<void> _updatePointsAndSaveToDatabase() async {
+  Future<void> _loadTotalPoints() async {
     final prefs = await SharedPreferences.getInstance();
-    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-    final cappedCurrentSteps = _currentSteps.clamp(0, maxDailySteps);
+    _totalPoints = prefs.getInt('totalPoints') ?? 0;
+    debugPrint('💰 Loaded total points: $_totalPoints');
+  }
 
-    final oldPointsFromStoredSteps = (_storedDailySteps ~/ stepsPerPoint).clamp(0, maxDailyPoints);
-    final newPointsFromCurrentSteps = (cappedCurrentSteps ~/ stepsPerPoint).clamp(0, maxDailyPoints);
+  // Helper for checkIfClaimedToday, internal to StepTracker
+  Future<void> _checkIfClaimedToday(String date) async {
+    final prefs = await SharedPreferences.getInstance();
+    final lastChecked = prefs.getString('lastClaimCheckedDate');
 
-    // --- Daily Goal Achievement Check & Streak Update Logic ---
-    if (cappedCurrentSteps >= maxDailySteps) { // Goal met for today
-      if (_lastGoalAchievedDate != today) { // Check if goal was already met today
-        final yesterday = DateFormat('yyyy-MM-dd').format(DateTime.now().subtract(const Duration(days: 1)));
-        if (_lastGoalAchievedDate == yesterday) {
-          _currentStreak++; // Consecutive day, increment streak
-          debugPrint('StepTracker: Streak incremented to $_currentStreak');
+    if (lastChecked == date && _hasClaimedToday) return;
+
+    try {
+      final snapshot = await _databaseService.getDailyStatsOnce(date);
+      final claimed = snapshot != null && snapshot['redeemed'] == true;
+      setClaimedToday(claimed);
+
+      if (kDebugMode) {
+        debugPrint('📦 Claim check: $claimed (from DB)');
+      }
+    } catch (e, stack) {
+      debugPrint('❌ Error checking claim: $e\n$stack');
+    }
+
+    _lastClaimCheckedDate = date;
+    await prefs.setString('lastClaimCheckedDate', date);
+  }
+
+
+  // --- Step Counting Logic (for actual Pedometer sensor) ---
+
+  void _handleStepCount(int cumulativeStepsFromSensor) async {
+    // 1. Assign the incoming sensor value to the class member
+    _rawSensorSteps = cumulativeStepsFromSensor; // <-- ADD THIS LINE
+    final prefs = await SharedPreferences.getInstance();
+    final today = DateFormat('yyyy-MM-dd').format(DateTime.now().toLocal());
+    final lastDate = prefs.getString('lastResetDate') ?? '';
+
+    debugPrint('👣 [Sensor] Incoming: $cumulativeStepsFromSensor. Last Reset Date: $lastDate. Today: $today');
+
+    // Handle new day logic first
+    if (today != lastDate) {
+      debugPrint('🔄 [Sensor] Detected new day. Applying new day logic.');
+      _isNewDay = true;
+      _dailySteps = 0;
+      _dailyStepBaseline = cumulativeStepsFromSensor; // Set baseline to current sensor reading
+      await prefs.setInt('dailySteps', 0);
+      await prefs.setInt('dailyStepBaseline', _dailyStepBaseline);
+      await prefs.setString('lastResetDate', today);
+
+      _currentStreak = await _streakManager.evaluate(today, prefs, 0);
+      await prefs.setInt('currentStreak', _currentStreak);
+      setClaimedToday(false); // New day, reset claimed status
+      await _checkIfClaimedToday(today); // Re-check after new day logic
+    } else {
+      // Same Day Logic: Infer baseline if it hasn't been set or was reset
+      if (_dailyStepBaseline == 0 && cumulativeStepsFromSensor > 0) {
+        final lastSavedDailySteps = prefs.getInt('dailySteps') ?? 0;
+        final lastRecordedRawSensorSteps = prefs.getInt('lastRecordedRawSensorSteps') ?? 0;
+
+        if (lastRecordedRawSensorSteps > 0 && cumulativeStepsFromSensor >= lastRecordedRawSensorSteps) {
+          _dailyStepBaseline = lastRecordedRawSensorSteps - lastSavedDailySteps;
+          debugPrint('🎯 [Sensor] Inferred _dailyStepBaseline: $_dailyStepBaseline (from prefs data)');
         } else {
-          _currentStreak = 1; // Not consecutive, start new streak (or first streak)
-          debugPrint('StepTracker: Streak started at 1');
+          // Fallback for cases where historical raw data is unreliable or first sensor reading on a fresh start
+          _dailyStepBaseline = cumulativeStepsFromSensor - lastSavedDailySteps;
+          debugPrint('⚠️ [Sensor] Fallback: Inferred _dailyStepBaseline: $_dailyStepBaseline (from current sensor and stored daily)');
         }
-        _lastGoalAchievedDate = today; // Update last achieved date to today
+        await prefs.setInt('dailyStepBaseline', _dailyStepBaseline);
+      } else if (_dailyStepBaseline == 0) {
+        // This case handles initial 0 step readings or situations where baseline wasn't loaded correctly
+        _dailyStepBaseline = prefs.getInt('dailyStepBaseline') ?? 0;
+        if (_dailyStepBaseline == 0) { // If still 0, set to current sensor reading (only if sensor sends 0)
+          _dailyStepBaseline = cumulativeStepsFromSensor;
+          await prefs.setInt('dailyStepBaseline', _dailyStepBaseline);
+          debugPrint('🔄 [Sensor] Resetting _dailyStepBaseline to incoming sensor ($cumulativeStepsFromSensor) as it was 0.');
+        }
+      }
+      _currentStreak = prefs.getInt('currentStreak') ?? 0; // Ensure streak is loaded
+    }
 
-        // Save updated streak to Firestore
-        if (_currentUser != null) {
-          await _databaseService.saveUserProfile(
-            name: _currentUser!.displayName ?? 'User',
-            email: _currentUser!.email ?? 'no-email@example.com',
-            currentStreak: _currentStreak,
-            lastGoalAchievedDate: _lastGoalAchievedDate,
+    final int calculatedDailySteps = (cumulativeStepsFromSensor - _dailyStepBaseline).clamp(0, 10000000); // Max steps for safety
+
+    // Only update if steps have actually increased to avoid unnecessary UI updates or saving identical values
+    if (calculatedDailySteps > _dailySteps) {
+      debugPrint('✨ [Sensor] New steps detected: $calculatedDailySteps > $_dailySteps');
+      _dailySteps = calculatedDailySteps;
+      await prefs.setInt('lastRecordedRawSensorSteps', cumulativeStepsFromSensor); // Always save latest raw sensor for baseline inference
+
+      // Recalculate points based on new daily steps
+      final oldPointsEarned = dailyPointsEarned;
+      final newPointsEarned = (_dailySteps ~/ stepsPerPoint).clamp(0, maxDailyPoints);
+
+      if (newPointsEarned > oldPointsEarned) {
+        _totalPoints += (newPointsEarned - oldPointsEarned);
+        await prefs.setInt('totalPoints', _totalPoints);
+        debugPrint('💰 [Sensor] Gained ${newPointsEarned - oldPointsEarned} points. New total points: $_totalPoints');
+      }
+      await prefs.setInt('dailySteps', _dailySteps); // Save the calculated daily steps to SharedPreferences
+      _safeNotifyListeners(); // Notify UI to update
+    } else {
+      debugPrint('🚫 [Sensor] No new steps for UI update. Calculated: $calculatedDailySteps, Current: $_dailySteps');
+    }
+  }
+
+  // --- UI Data Retrieval ---
+
+  Future<Map<String, dynamic>?> getDailyStatsForUI(String date) async {
+    try {
+      // Calls DatabaseService for a single read
+      final data = await _databaseService.getDailyStatsOnce(date);
+      debugPrint('📊 UI Data Request: Fetched daily stats for $date: ${data != null ? 'Found' : 'Not Found'}');
+      return data;
+    } catch (e, stackTrace) {
+      debugPrint('❌ StepTracker.getDailyStatsForUI error: $e');
+      debugPrint('Stack Trace: $stackTrace');
+      return null;
+    }
+  }
+
+
+  // --- Background Sync ---
+
+  void _startSyncTimer() {
+    // These are local variables, so no leading underscore needed
+    int lastSyncedSteps = -1;
+    int lastSyncedPoints = -1;
+
+    _syncTimer = Timer.periodic(const Duration(minutes: 3), (_) async {
+      if (_isDisposed) return;
+
+      final today = DateFormat('yyyy-MM-dd').format(DateTime.now().toLocal());
+
+      // Only sync if daily steps or total points have changed since last successful sync
+      if (_dailySteps != lastSyncedSteps || _totalPoints != lastSyncedPoints) {
+        _status = StepStatus.syncing;
+        _safeNotifyListeners();
+        debugPrint('🔄 Initiating background sync: Daily Steps: $_dailySteps, Total Points: $_totalPoints');
+        try {
+          await _databaseService.saveStatsAndPoints(
+            date: today,
+            steps: _dailySteps,
+            dailyPointsEarned: dailyPointsEarned, // Use the getter
+            streak: _currentStreak,
+            totalPoints: _totalPoints,
           );
+          lastSyncedSteps = _dailySteps;
+          lastSyncedPoints = _totalPoints;
+          _status = StepStatus.synced;
+          debugPrint('✅ Background sync successful: Daily Steps: $lastSyncedSteps, Total Points: $lastSyncedPoints');
+        } catch (e, stackTrace) {
+          _status = StepStatus.failed;
+          debugPrint('❌ Background sync failed: $e');
+          debugPrint('Stack Trace: $stackTrace');
+        } finally {
+          _safeNotifyListeners(); // Always notify listeners after sync attempt
         }
+      } else {
+        debugPrint('✅ No changes to sync. Skipping background sync.');
       }
-    } else {
-      // If daily goal is NOT met, and it's a new day since last goal achieved, reset streak.
-      final yesterday = DateFormat('yyyy-MM-dd').format(DateTime.now().subtract(const Duration(days: 1)));
-      if (_lastGoalAchievedDate != '' && _lastGoalAchievedDate != today && _lastGoalAchievedDate != yesterday) {
-        if (_currentStreak > 0) { // Only reset if there was an active streak
-          _currentStreak = 0;
-          debugPrint('StepTracker: Streak reset to 0 (missed a day).');
-          if (_currentUser != null) {
-            await _databaseService.saveUserProfile(
-              name: _currentUser!.displayName ?? 'User',
-              email: _currentUser!.email ?? 'no-email@example.com',
-              currentStreak: _currentStreak,
-              lastGoalAchievedDate: _lastGoalAchievedDate, // Keep last achieved date as is
-            );
-          }
-        }
-      }
+    });
+  }
+
+  // --- Point Redemption Logic ---
+
+  Future<int> redeemPoints() async {
+    if (!canRedeemPoints) {
+      debugPrint('🚫 Cannot redeem points: Insufficient points or daily cap reached. Total: $_totalPoints, Redeemed Today: $_pointsRedeemedToday');
+      return 0;
     }
-    // --- End Streak Logic ---
 
+    try {
+      final date = DateFormat('yyyy-MM-dd').format(DateTime.now().toLocal());
+      final redeemedAmount = dailyRedemptionCap;
 
-    if (newPointsFromCurrentSteps > oldPointsFromStoredSteps) {
-      final gainedPoints = newPointsFromCurrentSteps - oldPointsFromStoredSteps;
-      _totalPoints += gainedPoints; // Update local total points
-      _storedDailySteps = cappedCurrentSteps; // Update local stored daily steps
+      // Deduct locally first
+      _pointsRedeemedToday += redeemedAmount;
+      _totalPoints -= redeemedAmount;
 
-      // --- Save to SharedPreferences (for quick local access/offline) ---
-      await prefs.setInt('totalPoints', _totalPoints);
-      await prefs.setInt('dailySteps', cappedCurrentSteps);
+      debugPrint('💰 Attempting to redeem $redeemedAmount points. New local total: $_totalPoints');
 
-      // --- Save to Database ---
-      if (_currentUser != null) {
-        await _databaseService.saveUserProfile(
-          name: _currentUser!.displayName ?? 'User',
-          email: _currentUser!.email ?? 'no-email@example.com',
-          totalPoints: _totalPoints,
-        );
-        await _databaseService.updateDailyStats(
-          steps: cappedCurrentSteps,
-          pointsEarnedToday: newPointsFromCurrentSteps, // Points gained just today
-          totalPointsAccumulated: _totalPoints, // Current total accumulated points
-          date: today,
-        );
+      // Sync the redemption status and new total points to Firestore atomically
+      final success = await _databaseService.redeemDailyPoints(
+        date: date,
+        pointsToRedeem: redeemedAmount,
+        currentTotalPoints: _totalPoints, // Pass the NEW total after local deduction
+      );
+
+      if (success) {
+        // Persist local total points to SharedPreferences after successful DB sync
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setInt('totalPoints', _totalPoints);
+        setClaimedToday(true); // Mark as claimed for today via setter
+        debugPrint('✅ Points redeemed successfully for $date. Total points: $_totalPoints');
+        return redeemedAmount;
+      } else {
+        // Revert local changes if database update failed
+        _totalPoints += redeemedAmount;
+        _pointsRedeemedToday -= redeemedAmount;
+        debugPrint('❌ Redemption failed to sync to database, reverting local changes. Total points restored to: $_totalPoints');
+        return 0;
       }
-    } else if (cappedCurrentSteps > _storedDailySteps) {
-      // If steps increased but not enough for a new point, still update dailySteps
-      _storedDailySteps = cappedCurrentSteps;
-      await prefs.setInt('dailySteps', cappedCurrentSteps);
-      // Also update in Database if steps increased, even without new points
-      if (_currentUser != null) {
-        await _databaseService.updateDailyStats(
-          steps: cappedCurrentSteps,
-          pointsEarnedToday: newPointsFromCurrentSteps, // Still pass current points for the day
-          totalPointsAccumulated: _totalPoints,
-          date: today,
-        );
-      }
+    } catch (e, stackTrace) {
+      debugPrint('❌ Redeem failed: $e');
+      debugPrint('Stack Trace: $stackTrace');
+      return 0;
+    } finally {
+      _safeNotifyListeners(); // Ensure UI updates after any redemption attempt
     }
   }
 
-  /// Add mock steps (for testing purposes, especially on emulators).
-  /// Mock steps are only added if the real pedometer is not active.
-  @override
+  // --- Manual Reset ---
+
+  Future<void> resetSteps() async {
+    debugPrint('🔁 Manually resetting steps and related data...');
+    _dailySteps = 0;
+    _dailyStepBaseline = 0;
+    _rawSensorSteps = 0;
+    _pointsRedeemedToday = 0; // Reset daily redemption status too
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('dailySteps', 0);
+    await prefs.setInt('dailyStepBaseline', 0);
+    await prefs.remove('lastRecordedRawSensorSteps'); // Clear this for a fresh start
+    // Optionally also reset points related to reset if this is a full user data wipe
+    // await prefs.setInt('totalPoints', 0);
+    // _totalPoints = 0;
+
+    setClaimedToday(false); // Clear claimed status
+    _isNewDay = true; // Force new day detection on next _handleStepCount if desired
+
+    _safeNotifyListeners();
+    debugPrint('✅ Steps manually reset to 0 (and baseline/redeemed status).');
+  }
+
+  // --- Pedometer Error & Status Handlers ---
+
+  void _handleStepError(dynamic error) {
+    debugPrint('Step count error: $error');
+    _isPedometerAvailable = false;
+    _safeNotifyListeners();
+  }
+
+  void _handlePedStatus(String status) {
+    debugPrint('🚶 Pedestrian status: $status');
+  }
+
+  void _handlePedStatusError(dynamic error) {
+    debugPrint('Pedestrian status error: $error');
+    _isPedometerAvailable = false;
+    _safeNotifyListeners();
+  }
+
+  // --- External Mock Step Control (Debug Only) ---
+
+  // Note: This method is specifically for adding "fake" steps for development.
+  // It bypasses the complexities of actual sensor baseline tracking.
+  // Ensure the UI button calling this is also hidden in release builds.
+  // In `homepage.dart`, use `if (kDebugMode)` for the _buildEmulatorControls.
+  // The 'isPhysicalDevice' check in StepTracker's 'isPhysicalDevice' getter
+  // is still valid for showing/hiding emulator UI in general.
+  // This addMockSteps will work on both emulator and physical device IF kDebugMode is true.
   Future<void> addMockSteps(int stepsToAdd) async {
-    if (!_isPedometerAvailable) { // Only allow mock steps if pedometer isn't active
-      _currentSteps += stepsToAdd;
-      await _updatePointsAndSaveToDatabase(); // Update points and save to Database
-      notifyListeners(); // Notify UI of changes
-    } else {
-      debugPrint('Mock steps not added: Pedometer is active on this device.');
-    }
-  }
+    if (kDebugMode) { // Ensures this is strictly debug-only
+      _dailySteps += stepsToAdd;
+      debugPrint('📈 [Mock] Added $stepsToAdd steps. New _dailySteps: $_dailySteps');
 
-  /// NEW: Redeem points based on daily cap.
-  /// This method is called after the user successfully watches an ad.
-  /// Returns the number of points actually redeemed.
-  Future<int> redeemPoints() async { // Changed return type to Future<int>
-    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-    int pointsToRedeem = 0;
+      final oldPointsEarned = dailyPointsEarned;
+      final newPointsEarned = (_dailySteps ~/ stepsPerPoint).clamp(0, maxDailyPoints);
 
-    // Reset daily redeemed points if it's a new day since last redemption
-    if (_lastRedemptionDate != today) {
-      _dailyRedeemedPointsToday = 0;
-      debugPrint('StepTracker: New day for redemption, daily cap reset.');
-    }
-
-    // Calculate how many points can be redeemed in this transaction
-    final availablePoints = _totalPoints;
-    final remainingDailyCap = dailyRedemptionCap - _dailyRedeemedPointsToday;
-
-    pointsToRedeem = availablePoints.clamp(0, remainingDailyCap); // Clamp to ensure not negative or over cap
-
-    if (pointsToRedeem > 0) {
-      _totalPoints -= pointsToRedeem; // Deduct from total points
-      _dailyRedeemedPointsToday += pointsToRedeem; // Add to today's redeemed count
-      _lastRedemptionDate = today; // Update last redemption date to today
-
-      // --- Save to SharedPreferences ---
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt('totalPoints', _totalPoints);
-      // Save daily redemption status to SharedPreferences as well for quick local consistency
-      await prefs.setInt('dailyRedeemedPointsToday', _dailyRedeemedPointsToday);
-      await prefs.setString('lastRedemptionDate', _lastRedemptionDate);
-
-      // --- Save to Database ---
-      if (_currentUser != null) {
-        // Update total points and daily redemption status in user's profile
-        await _databaseService.saveUserProfile(
-          name: _currentUser!.displayName ?? 'User',
-          email: _currentUser!.email ?? 'no-email@example.com',
-          totalPoints: _totalPoints,
-          dailyRedeemedPointsToday: _dailyRedeemedPointsToday,
-          lastRedemptionDate: _lastRedemptionDate,
-        );
-        // Add a record of this specific redemption transaction
-        await _databaseService.addRedeemedReward(
-          rewardType: 'Points Redemption', // Generic type for daily point redemption
-          value: pointsToRedeem.toDouble(), // Store the actual points redeemed
-          status: 'fulfilled', // Assume immediate fulfillment for points
-          giftCardCode: 'N/A', // No specific gift card code for small point redemptions
-        );
+      if (newPointsEarned > oldPointsEarned) {
+        _totalPoints += (newPointsEarned - oldPointsEarned);
+        await SharedPreferences.getInstance().then((prefs) {
+          prefs.setInt('totalPoints', _totalPoints);
+        });
+        debugPrint('💰 [Mock] Gained ${newPointsEarned - oldPointsEarned} points. Total points: $_totalPoints');
       }
-      debugPrint('StepTracker: Redeemed $pointsToRedeem points. Total remaining: $_totalPoints, Daily redeemed: $_dailyRedeemedPointsToday');
-      notifyListeners(); // Notify UI of changes
+
+      await SharedPreferences.getInstance().then((prefs) {
+        prefs.setInt('dailySteps', _dailySteps);
+      });
+
+      _safeNotifyListeners();
+
+      // Immediately sync mock steps to database for visual verification in Firestore
+      final today = DateFormat('yyyy-MM-dd').format(DateTime.now().toLocal());
+      try {
+        await _databaseService.saveStatsAndPoints(
+          date: today,
+          steps: _dailySteps,
+          dailyPointsEarned: dailyPointsEarned,
+          streak: _currentStreak,
+          totalPoints: _totalPoints,
+        );
+        debugPrint('✅ [Mock] Steps synced to database for verification.');
+      } catch (e, stackTrace) {
+        debugPrint('❌ [Mock] Failed to sync mock steps to database: $e');
+        debugPrint('Stack Trace: $stackTrace');
+      }
     } else {
-      debugPrint('StepTracker: No points available to redeem or daily cap reached.');
+      debugPrint('🚫 Mock steps are only allowed in debug mode. Current mode: ${kReleaseMode ? "Release" : "Profile"}');
     }
-    return pointsToRedeem;
   }
 
-  /// Handle pedometer errors from the step count stream.
-  void _onStepCountError(error) {
-    debugPrint("Pedometer error: $error");
-    _isPedometerAvailable = false; // Set flag to false if an error occurs
-    notifyListeners(); // Notify UI that pedometer is not available
+  // --- Utilities ---
+
+  void _safeNotifyListeners() {
+    if (!_isDisposed) notifyListeners();
   }
 
-  /// Handle pedometer errors from the pedestrian status stream.
-  void _onPedestrianStatusError(error) {
-    debugPrint("Pedestrian Status error: $error");
-    _isPedometerAvailable = false; // Set flag to false if an error occurs
-    notifyListeners();
-  }
-
-  /// Callback function for when pedestrian status changes.
-  void _onPedestrianStatusChanged(PedestrianStatus event) {
-    debugPrint('Pedestrian Status: ${event.status}');
+  @override
+  void dispose() {
+    _syncTimer?.cancel();
+    _isDisposed = true;
+    super.dispose();
   }
 }

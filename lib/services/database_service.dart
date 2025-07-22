@@ -1,188 +1,275 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/material.dart'; // For debugPrint
-import 'package:intl/intl.dart'; // For DateFormat
+import 'package:device_info_plus/device_info_plus.dart';
+import 'package:flutter/foundation.dart';
 
-/// A service class to handle all interactions with Firebase Firestore.
-/// It uses the Canvas-provided APP_ID and current user's UID for data paths,
-/// adhering to Firebase security rules for private user data.
 class DatabaseService {
-  // Singleton pattern for easy access throughout the app
-  static final DatabaseService _instance = DatabaseService._internal();
-  factory DatabaseService() => _instance;
-  DatabaseService._internal();
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  String? _cachedDeviceId;
 
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  // --- Device ID Management ---
+  Future<String> getDeviceId() async {
+    if (_cachedDeviceId != null) return _cachedDeviceId!;
+    final deviceInfo = DeviceInfoPlugin();
 
-  // MANDATORY for Canvas: Get the current app ID from the environment.
-  // This is used to construct the correct Firestore collection paths.
-  // The 'APP_ID' environment variable is provided by the Canvas runtime.
-  final String _appId = const String.fromEnvironment('APP_ID', defaultValue: 'default-app-id');
-
-  // Helper to get the current authenticated user's ID.
-  // This will be null if no user is signed in.
-  String? get currentUserId => _auth.currentUser?.uid;
-
-  // --- Common Firestore Collection Paths ---
-  // All user-specific data is nested under: /artifacts/{appId}/users/{userId}/
-  DocumentReference _userDoc(String userId) {
-    return _db.collection('artifacts').doc(_appId).collection('users').doc(userId);
-  }
-
-  // --- User Profile & Total Points ---
-  /// Saves or updates a user's profile information, total points, streak,
-  /// and daily redemption status in Firestore.
-  /// Data is stored under `/artifacts/{appId}/users/{userId}/profiles/{userId}`.
-  Future<void> saveUserProfile({
-    required String name,
-    required String email,
-    int? totalPoints, // Optional: Update total points as part of profile
-    int? currentStreak, // Optional: Update streak as part of profile
-    String? lastGoalAchievedDate, // Optional: Update last goal date as part of profile
-    // --- NEW: Daily Redemption Fields ---
-    int? dailyRedeemedPointsToday, // Points redeemed today
-    String? lastRedemptionDate, // Date of last redemption (YYYY-MM-DD)
-  }) async {
-    final userId = currentUserId;
-    if (userId == null) {
-      debugPrint('DatabaseService Error: User not authenticated for saving profile.');
-      return;
-    }
     try {
-      final Map<String, dynamic> data = {
-        'name': name,
-        'email': email,
-        'updatedAt': FieldValue.serverTimestamp(), // Timestamp of last update
-      };
-      if (totalPoints != null) data['totalPoints'] = totalPoints;
-      if (currentStreak != null) data['currentStreak'] = currentStreak;
-      if (lastGoalAchievedDate != null) data['lastGoalAchievedDate'] = lastGoalAchievedDate;
-      // Add new redemption fields if provided
-      if (dailyRedeemedPointsToday != null) data['dailyRedeemedPointsToday'] = dailyRedeemedPointsToday;
-      if (lastRedemptionDate != null) data['lastRedemptionDate'] = lastRedemptionDate;
-
-
-      await _userDoc(userId).collection('profiles').doc(userId).set(
-        data,
-        SetOptions(merge: true), // Use merge: true to update fields without overwriting the whole document
-      );
-      debugPrint('DatabaseService: User profile saved/updated for $userId');
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        final androidInfo = await deviceInfo.androidInfo;
+        _cachedDeviceId = androidInfo.id;
+      } else if (defaultTargetPlatform == TargetPlatform.iOS) {
+        final iosInfo = await deviceInfo.iosInfo;
+        _cachedDeviceId = iosInfo.identifierForVendor ?? 'unknown-ios';
+      } else {
+        _cachedDeviceId = 'unknown-platform-id';
+        debugPrint('⚠️ Running on an unexpected platform.');
+      }
     } catch (e) {
-      debugPrint('DatabaseService Error saving profile: $e');
+      debugPrint('❌ Failed to retrieve device ID: $e');
+      _cachedDeviceId = 'error-device-retrieval';
     }
+
+    if (_cachedDeviceId == null || _cachedDeviceId!.isEmpty) {
+      _cachedDeviceId = 'default-fallback-id';
+    }
+    return _cachedDeviceId!;
   }
 
-  /// Retrieves a user's profile information as a stream.
-  /// Listens for real-time updates to the profile document.
-  Stream<Map<String, dynamic>?> getUserProfile() {
-    final userId = currentUserId;
-    if (userId == null) {
-      debugPrint('DatabaseService Error: User not authenticated for getting profile.');
-      return Stream.value(null); // Return an empty stream if no user
-    }
-    return _userDoc(userId)
-        .collection('profiles')
-        .doc(userId)
-        .snapshots() // Listen for real-time changes
-        .map((snapshot) => snapshot.data()); // Map snapshot to data map
-  }
-
-  // --- Daily Stats (Steps & Points Earned Today) ---
-  /// Updates a user's daily step count and points earned for a specific date.
-  /// Data is stored under `/artifacts/{appId}/users/{userId}/daily_stats/{date}`.
-  Future<void> updateDailyStats({
+  // --- Batching Method ---
+  Future<void> saveStatsAndPoints({
+    required String date,
     required int steps,
-    required int pointsEarnedToday, // Points earned on this specific day
-    required int totalPointsAccumulated, // Total points across all days (for snapshot)
-    required String date, // Format: 'YYYY-MM-DD'
+    required int dailyPointsEarned, // Added this
+    required int streak,
+    required int totalPoints,     // Added this
   }) async {
-    final userId = currentUserId;
-    if (userId == null) {
-      debugPrint('DatabaseService Error: User not authenticated for updating daily stats.');
-      return;
-    }
     try {
-      await _userDoc(userId).collection('daily_stats').doc(date).set({
+      final deviceId = await getDeviceId();
+      final batch = _firestore.batch();
+
+      final statsRef = _firestore
+          .collection('stepStats')
+          .doc(deviceId)
+          .collection('dailyStats')
+          .doc(date);
+
+      final pointsRef = _firestore
+          .collection('userProfiles')
+          .doc(deviceId);
+
+      batch.set(statsRef, {
         'steps': steps,
-        'pointsEarnedToday': pointsEarnedToday,
-        'totalPointsAccumulated': totalPointsAccumulated, // Snapshot of total points at this daily update
-        'lastUpdated': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true)); // Use merge to update existing fields or create if not exists
-      debugPrint('DatabaseService: Daily stats updated for $userId on $date: $steps steps, $pointsEarnedToday points');
-    } catch (e) {
-      debugPrint('DatabaseService Error updating daily stats: $e');
-    }
-  }
-
-  /// Retrieves a stream of a user's daily stats for a specific date.
-  Stream<Map<String, dynamic>?> getDailyStats(String date) {
-    final userId = currentUserId;
-    if (userId == null) {
-      debugPrint('DatabaseService Error: User not authenticated for getting daily stats.');
-      return Stream.value(null);
-    }
-    return _userDoc(userId)
-        .collection('daily_stats')
-        .doc(date)
-        .snapshots()
-        .map((snapshot) => snapshot.data());
-  }
-
-  /// Retrieves a stream of daily step data for a given date range (e.g., for charts).
-  Stream<List<Map<String, dynamic>>> getDailyStatsRange(DateTime startDate, DateTime endDate) {
-    final userId = currentUserId;
-    if (userId == null) {
-      debugPrint('DatabaseService Error: User not authenticated for getting daily stats range.');
-      return Stream.value([]);
-    }
-    return _userDoc(userId)
-        .collection('daily_stats')
-        .where(FieldPath.documentId, isGreaterThanOrEqualTo: DateFormat('yyyy-MM-dd').format(startDate))
-        .where(FieldPath.documentId, isLessThanOrEqualTo: DateFormat('yyyy-MM-dd').format(endDate))
-        .snapshots()
-        .map((snapshot) => snapshot.docs.map((doc) => doc.data()..['date'] = doc.id).toList()); // Add doc ID as 'date'
-  }
-
-  // --- Redeemed Rewards ---
-  /// Adds a record of a redeemed reward to Firestore.
-  /// Stored under `/artifacts/{appId}/users/{userId}/redeemed_rewards`.
-  Future<void> addRedeemedReward({
-    required String rewardType,
-    required double value, // This will now be the actual points redeemed
-    required String status, // e.g., 'pending', 'fulfilled'
-    String? giftCardCode, // Optional: for actual gift card code
-  }) async {
-    final userId = currentUserId;
-    if (userId == null) {
-      debugPrint('DatabaseService Error: User not authenticated for adding reward.');
-      return;
-    }
-    try {
-      await _userDoc(userId).collection('redeemed_rewards').add({
-        'rewardType': rewardType,
-        'value': value, // Store the actual points redeemed
-        'status': status,
-        'giftCardCode': giftCardCode,
+        'dailyPointsEarned': dailyPointsEarned, // Use the passed value
+        'streak': streak,
         'timestamp': FieldValue.serverTimestamp(),
-      });
-      debugPrint('DatabaseService: Redeemed reward added for $userId: $rewardType ($value points)');
-    } catch (e) {
-      debugPrint('DatabaseService Error adding redeemed reward: $e');
+      }, SetOptions(merge: true));
+
+      batch.set(pointsRef, {
+        'totalPoints': totalPoints, // Use the passed value
+        'lastUpdated': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      await batch.commit();
+      debugPrint('✅ saveStatsAndPoints: Batching complete for $date.');
+    } catch (e, stackTrace) {
+      debugPrint('❌ saveStatsAndPoints error: $e');
+      debugPrint('Stack Trace: $stackTrace');
     }
   }
 
-  /// Retrieves a stream of all redeemed rewards for the current user.
-  Stream<List<Map<String, dynamic>>> getRedeemedRewards() {
-    final userId = currentUserId;
-    if (userId == null) {
-      debugPrint('DatabaseService Error: User not authenticated for getting rewards.');
-      return Stream.value([]);
+  // --- Missing Methods ---
+  Future<Map<String, dynamic>?> getDailyStatsOnce(String date) async {
+    try {
+      final deviceId = await getDeviceId();
+      final doc = await _firestore
+          .collection('stepStats')
+          .doc(deviceId)
+          .collection('dailyStats')
+          .doc(date)
+          .get();
+
+      return doc.exists ? doc.data() : null;
+    } catch (e, stackTrace) {
+      debugPrint('❌ getDailyStatsOnce error: $e');
+      debugPrint('Stack Trace: $stackTrace');
+      return null;
     }
-    return _userDoc(userId)
-        .collection('redeemed_rewards')
-        .orderBy('timestamp', descending: true) // Order by timestamp
-        .snapshots()
-        .map((snapshot) => snapshot.docs.map((doc) => doc.data()).toList());
+  }
+
+  Future<bool> updateDailyStatsRedeemedStatus({
+    required String date,
+    required bool redeemed,
+  }) async {
+    try {
+      final deviceId = await getDeviceId();
+      final docRef = _firestore
+          .collection('stepStats')
+          .doc(deviceId)
+          .collection('dailyStats')
+          .doc(date);
+
+      await docRef.set({
+        'redeemed': redeemed,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      debugPrint('✅ updateDailyStatsRedeemedStatus: $date → $redeemed');
+      return true;
+    } catch (e, stackTrace) {
+      debugPrint('❌ updateDailyStatsRedeemedStatus failed: $e');
+      debugPrint('Stack Trace: $stackTrace');
+      return false;
+    }
+  }
+
+  // --- Redeeming Points ---
+  Future<bool> redeemDailyPoints({
+    required String date,
+    required int pointsToRedeem, // Pass the actual points to be redeemed
+    required int currentTotalPoints, // Pass the current total points from StepTracker
+  }) async {
+    try {
+      final deviceId = await getDeviceId();
+      final dailyDocRef = _firestore.collection('stepStats').doc(deviceId).collection('dailyStats').doc(date);
+      final profileRef = _firestore.collection('userProfiles').doc(deviceId);
+
+      // Check if already redeemed - crucial to prevent double redemption
+      final dailySnapshot = await dailyDocRef.get();
+      if (dailySnapshot.exists && (dailySnapshot.data()?['redeemed'] == true || dailySnapshot.data()?['pointsRedeemed'] != null)) {
+        debugPrint('🟡 DatabaseService: Points already redeemed for $date or redemption recorded.');
+        return false;
+      }
+
+      // Use a transaction to update both documents atomically
+      await _firestore.runTransaction((transaction) async {
+        // 1. Update total points in userProfiles
+        // We are directly setting the value passed from StepTracker,
+        // because StepTracker already subtracted points locally.
+        transaction.set(profileRef, {
+          'totalPoints': currentTotalPoints, // Set the updated total points from StepTracker
+          'lastUpdated': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+
+        // 2. Mark daily stats as redeemed
+        transaction.set(dailyDocRef, {
+          'redeemed': true,
+          'pointsRedeemed': pointsToRedeem, // Record how many points were redeemed from this day's earnings
+          'redeemedAt': FieldValue.serverTimestamp(), // New field for clarity
+        }, SetOptions(merge: true));
+      }).timeout(const Duration(seconds: 10));
+
+      debugPrint('✅ DatabaseService: Successfully redeemed $pointsToRedeem points for $date');
+      return true;
+    } catch (e, stackTrace) {
+      debugPrint('❌ DatabaseService: Failed to redeem points for $date: $e');
+      debugPrint('Stack Trace: $stackTrace');
+      return false;
+    }
+  }
+
+  // --- Data Retrieval for Charts ---
+  Future<Map<String, int>> getWeeklyStepData() async {
+    final deviceId = await getDeviceId();
+    final now = DateTime.now().toLocal(); // Ensure local time for consistent day calculation
+    final sevenDaysAgo = DateTime(now.year, now.month, now.day).subtract(const Duration(days: 6)); // Start of the day 6 days ago
+
+    final querySnapshot = await _firestore
+        .collection('stepStats')
+        .doc(deviceId)
+        .collection('dailyStats')
+        .where('timestamp', isGreaterThanOrEqualTo: Timestamp.fromDate(sevenDaysAgo))
+        .orderBy('timestamp')
+        .get();
+
+    final stepData = <String, int>{};
+
+    for (final doc in querySnapshot.docs) {
+      final data = doc.data();
+      final timestamp = data['timestamp'] as Timestamp?;
+      final steps = (data['steps'] as num?)?.toInt() ?? 0; // Cast to num then to Int
+
+      if (timestamp != null) {
+        final date = timestamp.toDate().toLocal();
+        final label = _getWeekdayLabel(date.weekday);
+        stepData[label] = (stepData[label] ?? 0) + steps; // Aggregate steps for the same weekday
+      }
+    }
+
+    // Initialize all 7 days of the week, ensuring correct order for display
+    final Map<String, int> orderedStepData = {};
+    for (int i = 0; i < 7; i++) {
+      final dateForDay = sevenDaysAgo.add(Duration(days: i));
+      final label = _getWeekdayLabel(dateForDay.weekday);
+      orderedStepData[label] = stepData[label] ?? 0; // Use aggregated data or 0
+    }
+
+    return orderedStepData;
+  }
+
+
+  String _getWeekdayLabel(int weekday) {
+    // Weekday constants from DateTime class (1 = Monday, 7 = Sunday)
+    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    return days[weekday - 1]; // Adjust for 0-based index
+  }
+
+  Future<Map<String, int>> getMonthlyStepData() async {
+    final deviceId = await getDeviceId();
+    final now = DateTime.now().toLocal();
+    final thirtyDaysAgo = DateTime(now.year, now.month, now.day).subtract(const Duration(days: 29)); // Start of the day 29 days ago
+
+    final querySnapshot = await _firestore
+        .collection('stepStats')
+        .doc(deviceId)
+        .collection('dailyStats')
+        .where('timestamp', isGreaterThanOrEqualTo: Timestamp.fromDate(thirtyDaysAgo))
+        .orderBy('timestamp')
+        .get();
+
+    final Map<String, int> weekData = {
+      'Week 1': 0,
+      'Week 2': 0,
+      'Week 3': 0,
+      'Week 4': 0,
+      'Week 5': 0,
+    };
+
+    for (final doc in querySnapshot.docs) {
+      final data = doc.data();
+      final timestamp = data['timestamp'] as Timestamp?;
+      final steps = (data['steps'] as num?)?.toInt() ?? 0;
+
+      if (timestamp != null) {
+        final date = timestamp.toDate().toLocal();
+        // Calculate days ago relative to 'now'
+        final int daysDifference = now.difference(date).inDays;
+        // Determine which 7-day period the date falls into, starting from 30 days ago
+        final int weekNumber = (daysDifference ~/ 7) + 1;
+
+        if (weekNumber <= 5 && weekNumber >= 1) { // Ensure it falls within our 5-week range
+          final label = 'Week $weekNumber';
+          weekData[label] = ((weekData[label] ?? 0) + steps).toInt();
+        }
+      }
+    }
+    return weekData;
+  }
+
+  // --- Deletion ---
+  Future<void> deleteAllDailyStats() async {
+    try {
+      final deviceId = await getDeviceId();
+      final collectionRef = _firestore
+          .collection('stepStats')
+          .doc(deviceId)
+          .collection('dailyStats');
+
+      final snapshot = await collectionRef.get();
+      for (final doc in snapshot.docs) {
+        await doc.reference.delete();
+      }
+      debugPrint('🗑️ DatabaseService: All dailyStats documents deleted for device: $deviceId');
+    } catch (e, stackTrace) {
+      debugPrint('❌ DatabaseService: Failed to delete dailyStats: $e');
+      debugPrint('Stack Trace: $stackTrace');
+    }
   }
 }
