@@ -32,7 +32,6 @@ class HomePageContentState extends State<HomePageContent> {
     if (_hasLoadedData) {
       debugPrint("⏩ Skipping _loadData (already loaded)");
       if (mounted) {
-        // Ensure _isLoading is false if already loaded and we're skipping
         setState(() {
           _isLoading = false;
         });
@@ -40,7 +39,6 @@ class HomePageContentState extends State<HomePageContent> {
       return;
     }
 
-    // Get StepTracker instance without listening to avoid unnecessary rebuilds during data loading
     final stepTracker = Provider.of<StepTracker>(context, listen: false);
     final today = DateFormat('yyyy-MM-dd').format(DateTime.now().toLocal());
 
@@ -52,27 +50,22 @@ class HomePageContentState extends State<HomePageContent> {
         debugPrint("👣 Steps: ${data['steps']}, 🔥 Streak: ${data['streak']}, 🎯 Daily Points: ${data['dailyPointsEarned']}");
         stepTracker.setCurrentSteps(data['steps'] ?? 0);
         stepTracker.setCurrentStreak(data['streak'] ?? 0);
-        // Do NOT set _totalPoints here. _totalPoints is overall and loaded in _loadPoints()
-        // stepTracker.setTotalPoints(data['dailyPointsEarned'] ?? 0); // REMOVE THIS LINE
-        stepTracker.setClaimedToday(data['redeemed'] == true);
+        // Ensure that hasClaimedToday reflects the 'claimedDailyBonus' field from Firestore
+        // (You've updated database_service.dart to use 'claimedDailyBonus')
+        stepTracker.setClaimedToday(data['claimedDailyBonus'] == true);
       } else {
-        // If no data for today, initialize daily relevant UI state to zero/false
         stepTracker.setCurrentSteps(0);
         stepTracker.setClaimedToday(false);
-        // Streak and total points (overall) are loaded by StepTracker's _loadBaseline and _loadPoints,
-        // so no need to set them to 0 here for a fresh day's record.
       }
 
-      _hasLoadedData = true; // Mark as loaded only after successful data processing
+      _hasLoadedData = true;
     } catch (e, stackTrace) {
       debugPrint('⚠️ Error loading data: $e');
       debugPrint('Stack Trace: $stackTrace');
     } finally {
-      // Always ensure loading state is false when operation completes, regardless of success/failure
       if (mounted) {
         setState(() {
           _isLoading = false;
-          // Set _oldSteps here to ensure animation starts from current displayed steps
           _oldSteps = stepTracker.currentSteps;
           debugPrint("✅ Data loading complete. isLoading = $_isLoading, _oldSteps = $_oldSteps");
         });
@@ -83,7 +76,6 @@ class HomePageContentState extends State<HomePageContent> {
 
   @override
   Widget build(BuildContext context) {
-    // Listen to StepTracker for UI updates
     final stepTracker = Provider.of<StepTracker>(context);
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
@@ -91,7 +83,6 @@ class HomePageContentState extends State<HomePageContent> {
     return SafeArea(
       child: RefreshIndicator(
         onRefresh: () async {
-          // Reset _hasLoadedData to false to force a full reload from DB
           _hasLoadedData = false;
           setState(() => _isLoading = true);
           await _loadData();
@@ -103,11 +94,10 @@ class HomePageContentState extends State<HomePageContent> {
             horizontal: screenWidth * 0.05,
             vertical: screenHeight * 0.001,
           ),
-          physics: const AlwaysScrollableScrollPhysics(), // Allows pull-to-refresh even with short content
+          physics: const AlwaysScrollableScrollPhysics(),
           child: Column(
             children: [
-              // Display debug/emulator mode banner only in debug builds
-              if (kDebugMode) // Use kDebugMode
+              if (kDebugMode)
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(10),
@@ -117,7 +107,7 @@ class HomePageContentState extends State<HomePageContent> {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: const Text(
-                    '🧪 Debug Mode Active', // Clarified text
+                    '🧪 Debug Mode Active',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: Colors.deepPurple,
@@ -128,10 +118,10 @@ class HomePageContentState extends State<HomePageContent> {
               _buildGauge(screenWidth, stepTracker),
               _buildSummaryCards(stepTracker),
               const SizedBox(height: 20),
+              // Use the refactored _buildClaimButton
               _buildClaimButton(stepTracker, screenWidth),
               const SizedBox(height: 20),
-              // Display emulator controls only in debug builds
-              if (kDebugMode) // Use kDebugMode
+              if (kDebugMode)
                 _buildEmulatorControls(context),
             ],
           ),
@@ -220,31 +210,37 @@ class HomePageContentState extends State<HomePageContent> {
     );
   }
 
+  // Refactored _buildClaimButton to call claimDailyBonusPoints
   Widget _buildClaimButton(StepTracker tracker, double width) {
+    // Condition for enabling the button:
+    // 1. Daily points earned must be at or above maxDailyPoints (100)
+    // 2. The daily bonus must NOT have been claimed today
+    final bool canClaim = tracker.dailyPointsEarned >= StepTracker.maxDailyPoints &&
+        !tracker.hasClaimedToday;
+
     return SizedBox(
       width: width * 0.75,
       child: ElevatedButton(
-        onPressed: tracker.dailyPointsEarned >= StepTracker.maxDailyPoints &&
-            !tracker.hasClaimedToday
+        onPressed: canClaim
             ? () async {
-          final successAmount = await tracker.redeemPoints(); // redeemPoints returns int (amount redeemed)
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                  successAmount > 0 // Check if more than 0 points were redeemed
-                      ? '🎉 Claimed $successAmount Daily Points!'
-                      : '⚠️ Already claimed or error occurred'),
-            ),
-          );
+          await tracker.claimDailyBonusPoints();
+          if (!mounted) return; // Check if the widget is still mounted
+          if (tracker.hasClaimedToday) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('🎉 Claimed ${StepTracker.maxDailyPoints} Daily Points!')),
+            );
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('😞 Failed to claim daily bonus points. Try again.')),
+            );
+          }
         }
-            : null,
+            : null, // Disable the button
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.deepOrange,
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(vertical: 14),
-          shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -253,10 +249,9 @@ class HomePageContentState extends State<HomePageContent> {
             const SizedBox(width: 8),
             Text(
               tracker.hasClaimedToday
-                  ? '✅ 100 Points Claimed Today'
-                  : 'Claim 100 Points (Daily)',
-              style: const TextStyle(
-                  fontWeight: FontWeight.bold, fontSize: 16),
+                  ? '✅ ${StepTracker.maxDailyPoints} Points Claimed Today'
+                  : 'Claim ${StepTracker.maxDailyPoints} Points (Daily)',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
           ],
         ),
@@ -267,7 +262,6 @@ class HomePageContentState extends State<HomePageContent> {
   Widget _buildEmulatorControls(BuildContext context) {
     return Column(
       children: [
-        // Text is now managed by the main build method for consistency
         const SizedBox(height: 10),
         ElevatedButton(
           onPressed: () {
@@ -287,7 +281,7 @@ class HomePageContentState extends State<HomePageContent> {
             shape:
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
-          child: const Text('➕ Add 1000 Mock Steps (Debug Only)'), // Clarified text
+          child: const Text('➕ Add 1000 Mock Steps (Debug Only)'),
         ),
         ElevatedButton(
           onPressed: () {
