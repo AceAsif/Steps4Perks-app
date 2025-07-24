@@ -472,6 +472,40 @@ class StepTracker with ChangeNotifier {
     }
   }
 
+  Future<void> resetMockSteps() async {
+  if (kDebugMode) {
+    debugPrint('🧹 [Mock] Resetting mock steps to 0.');
+
+    _dailySteps = 0;
+    _dailyStepBaseline = 0;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('dailySteps', 0);
+    await prefs.setInt('dailyStepBaseline', 0);
+
+    // Sync to Firestore
+    final today = DateFormat('yyyy-MM-dd').format(DateTime.now().toLocal());
+    try {
+      await _databaseService.saveStatsAndPoints(
+        date: today,
+        steps: _dailySteps,
+        dailyPointsEarned: dailyPointsEarned,
+        streak: _currentStreak,
+        totalPoints: _totalPoints,
+      );
+      debugPrint('✅ [Mock] Step reset synced to database.');
+    } catch (e, stackTrace) {
+      debugPrint('❌ [Mock] Failed to sync reset: $e');
+      debugPrint('Stack Trace: $stackTrace');
+    }
+
+    _safeNotifyListeners();
+  } else {
+    debugPrint('🚫 resetMockSteps is only available in debug mode.');
+  }
+}
+
+
   // --- Utilities ---
 
   void _safeNotifyListeners() {

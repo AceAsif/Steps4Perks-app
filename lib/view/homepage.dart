@@ -5,6 +5,7 @@ import 'package:myapp/features/step_tracker.dart';
 import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:flutter/foundation.dart'; // Import kDebugMode
+import 'package:myapp/services/database_service.dart';
 
 class HomePageContent extends StatefulWidget {
   const HomePageContent({super.key});
@@ -270,6 +271,8 @@ class HomePageContentState extends State<HomePageContent> {
         const SizedBox(height: 10),
         ElevatedButton(
           onPressed: () {
+            // commen out to set reset
+            // Provider.of<StepTracker>(context, listen: false).resetMockSteps();
             Provider.of<StepTracker>(context, listen: false)
                 .addMockSteps(1000);
             ScaffoldMessenger.of(context).showSnackBar(
@@ -285,6 +288,23 @@ class HomePageContentState extends State<HomePageContent> {
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
           child: const Text('➕ Add 1000 Mock Steps (Debug Only)'), // Clarified text
+        ),
+        ElevatedButton(
+          onPressed: () {
+            Provider.of<StepTracker>(context, listen: false).resetMockSteps();
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Reset mock steps to 0!')),
+            );
+          },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.blueGrey,
+            foregroundColor: Colors.white,
+            padding:
+            const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          child: const Text('Reset mock steps to 0!'), // Clarified text
         ),
       ],
     );

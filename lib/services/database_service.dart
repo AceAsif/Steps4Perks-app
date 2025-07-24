@@ -272,4 +272,36 @@ class DatabaseService {
       debugPrint('Stack Trace: $stackTrace');
     }
   }
+
+  Future<void> addRedeemedReward({
+  required String rewardType,
+  required num value,
+  required String status,
+  String? giftCardCode,
+}) async {
+  try {
+    final deviceId = await getDeviceId();
+    final rewardRef = _firestore
+        .collection('stepStats')
+        .doc(deviceId)
+        .collection('redeemed_rewards')
+        .doc(); // auto ID
+
+    final data = {
+      'rewardType': rewardType,
+      'value': value,
+      'status': status,
+      'timestamp': FieldValue.serverTimestamp(),
+      if (giftCardCode != null) 'giftCardCode': giftCardCode,
+    };
+
+    await rewardRef.set(data);
+
+    debugPrint('🎁 addRedeemedReward: Added $rewardType reward with value $value');
+  } catch (e, stackTrace) {
+    debugPrint('❌ addRedeemedReward error: $e');
+    debugPrint('Stack Trace: $stackTrace');
+  }
+}
+
 }
