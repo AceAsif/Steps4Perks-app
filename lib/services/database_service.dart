@@ -1,7 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
+import '../features/step_tracker.dart';
 import 'package:intl/intl.dart'; // Added for date formatting
+import '../view/rewardItem.dart';
 
 class DatabaseService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -316,16 +318,16 @@ class DatabaseService {
     }
   }
 
-  Future<void> addRedeemedReward({
-  required String rewardType,
-  required num value,
-  required String status,
-  String? giftCardCode,
+Future<void> addRedeemedReward({
+   required String rewardType,
+    required num value,
+    required String status,
+    String? giftCardCode,
 }) async {
   try {
     final deviceId = await getDeviceId();
     final rewardRef = _firestore
-        .collection('stepStats')
+        .collection('users') // ✅ corrected from 'stepStats'
         .doc(deviceId)
         .collection('redeemed_rewards')
         .doc(); // auto ID
@@ -346,5 +348,115 @@ class DatabaseService {
     debugPrint('Stack Trace: $stackTrace');
   }
 }
+
+Future<void> claimDailyPoints() async {
+  final deviceId = await getDeviceId();
+  final userRef = _firestore.collection('users').doc(deviceId);
+  final today = DateFormat('yyyy-MM-dd').format(DateTime.now().toLocal());
+  final dailyStatsRef = userRef.collection('dailyStats').doc(today);
+
+  await _firestore.runTransaction((transaction) async {
+    final userSnapshot = await transaction.get(userRef);
+    final currentTotalPoints = (userSnapshot.data()?['totalPoints'] ?? 0) as int;
+
+    // 1. update user profile totalPoints
+    transaction.update(userRef, {
+      'totalPoints': currentTotalPoints + StepTracker.maxDailyPoints,
+    });
+
+    // 2. update today’s dailyStats
+    transaction.set(dailyStatsRef, {
+      'claimedDailyBonus': true,
+      'dailyPointsEarned': StepTracker.maxDailyPoints,
+      'totalPoints': currentTotalPoints + StepTracker.maxDailyPoints,
+      'date': today,
+      'lastUpdated': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  });
+}
+
+Future<int> getTotalPointsFromUserProfile() async {
+  final deviceId = await getDeviceId(); // however you're storing it
+  final ref = FirebaseFirestore.instance
+      .collection('users')
+      .doc(deviceId)
+      .collection('dailyStats')
+      .orderBy('timestamp', descending: true)
+      .limit(1);
+
+  final snapshot = await ref.get();
+  if (snapshot.docs.isNotEmpty) {
+    return snapshot.docs.first.data()['totalPoints'] ?? 0;
+  } else {
+    return 0;
+  }
+}
+
+// Fetch redeemed rewards for a specific user
+  Future<List<Map<String, dynamic>>> fetchRedeemedRewards(String deviceId) async {
+    try {
+      final rewardRef = _firestore
+          .collection('users')
+          .doc(deviceId)
+          .collection('redeemed_rewards');
+
+      final querySnapshot = await rewardRef.get();
+      final rewardList = querySnapshot.docs.map((doc) {
+        return doc.data(); // return the data as a map
+      }).toList();
+
+      return rewardList;
+    } catch (e) {
+      print('Error fetching redeemed rewards: $e');
+      return [];
+    }
+  }
+
+  Future<void> updateDailyPoints({
+  required String deviceId,
+  required String date, // in format 'YYYY-MM-DD'
+  required int newPoints,
+}) async {
+  final userDoc = FirebaseFirestore.instance.collection('users').doc(deviceId);
+  final dailyStatsRef = userDoc.collection('dailyStats');
+
+  // Fetch all past documents before today
+  final querySnapshot = await dailyStatsRef
+      .where('timestamp', isLessThan: Timestamp.fromDate(DateTime.parse(date)))
+      .get();
+
+  int cumulativePoints = 0;
+
+  for (var doc in querySnapshot.docs) {
+    final data = doc.data();
+    cumulativePoints += (data['dailyPointsEarned'] ?? 0) as int;
+  }
+
+  cumulativePoints += newPoints;
+
+  await dailyStatsRef.doc(date).set({
+    'date': date,
+    'dailyPointsEarned': newPoints,
+    'totalPoints': cumulativePoints,
+    'timestamp': Timestamp.fromDate(DateTime.parse(date)),
+    'lastUpdated': FieldValue.serverTimestamp(),
+    // other fields like steps, streak, etc...
+  }, SetOptions(merge: true));
+}
+
+Future<List<RewardItem>> fetchAvailableRewards(String userId) async {
+  final snapshot = await FirebaseFirestore.instance
+      .collection('users')
+      .doc(userId)
+      .collection('redeemed_rewards')
+      .where('status', isEqualTo: 'active')
+      .get();
+
+  return snapshot.docs
+      .map((doc) => RewardItem.fromFirestore(doc.id, doc.data()))
+      .toList();
+}
+
+
 
 }

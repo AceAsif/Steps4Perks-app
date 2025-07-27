@@ -7,6 +7,7 @@ import 'package:myapp/services/pedometer_service.dart';
 import 'package:myapp/utils/streak_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
+import '../services/database_service.dart';
 
 enum StepStatus {
   idle,
@@ -165,11 +166,25 @@ class StepTracker with ChangeNotifier {
     await _checkIfClaimedToday(today); // Use internal method
   }
 
+  // Future<void> _loadTotalPoints() async {
+  //   final prefs = await SharedPreferences.getInstance();
+  //   _totalPoints = prefs.getInt('totalPoints') ?? 0;
+  //   debugPrint('💰 Loaded total points: $_totalPoints');
+  // }
+
   Future<void> _loadTotalPoints() async {
+  try {
+    _totalPoints = await _databaseService.getTotalPointsFromUserProfile();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('totalPoints', _totalPoints);
+    debugPrint('💰 Synced totalPoints from DB: $_totalPoints');
+  } catch (e) {
+    debugPrint('❌ Error loading totalPoints from DB: $e');
     final prefs = await SharedPreferences.getInstance();
     _totalPoints = prefs.getInt('totalPoints') ?? 0;
-    debugPrint('💰 Loaded total points: $_totalPoints');
   }
+}
+
 
   // Helper for checkIfClaimedToday, internal to StepTracker
   Future<void> _checkIfClaimedToday(String date) async {
@@ -252,15 +267,29 @@ class StepTracker with ChangeNotifier {
       await prefs.setInt('lastRecordedRawSensorSteps', cumulativeStepsFromSensor);
 
       // Recalculate points based on new daily steps (points earned from activity)
-      final oldPointsEarned = dailyPointsEarned;
-      final newPointsEarned = (_dailySteps ~/ stepsPerPoint).clamp(0, maxDailyPoints);
+      final prevPointsEarned = (_dailySteps ~/ stepsPerPoint).clamp(0, maxDailyPoints);
+      _dailySteps = calculatedDailySteps;
+      final currentPointsEarned = (_dailySteps ~/ stepsPerPoint).clamp(0, maxDailyPoints);
 
-      if (newPointsEarned > oldPointsEarned) {
-        // Only update _totalPoints from *step-based earnings* here
-        _totalPoints += (newPointsEarned - oldPointsEarned);
+      final newPoints = currentPointsEarned - prevPointsEarned;
+
+      if (newPoints > 0) {
+        _totalPoints += newPoints;
+
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setInt('dailySteps', _dailySteps);
         await prefs.setInt('totalPoints', _totalPoints);
-        debugPrint('💰 [Sensor] Gained ${newPointsEarned - oldPointsEarned} points from steps. New total points: $_totalPoints');
+
+        debugPrint('💰 Added $newPoints new points from steps. Total: $_totalPoints');
       }
+
+
+      // if (newPointsEarned > oldPointsEarned) {
+      //   // Only update _totalPoints from *step-based earnings* here
+      //   _totalPoints += (newPointsEarned - oldPointsEarned);
+      //   await prefs.setInt('totalPoints', _totalPoints);
+      //   debugPrint('💰 [Sensor] Gained ${newPointsEarned - oldPointsEarned} points from steps. New total points: $_totalPoints');
+      // }
       await prefs.setInt('dailySteps', _dailySteps);
       _safeNotifyListeners();
     } else {
@@ -327,45 +356,41 @@ class StepTracker with ChangeNotifier {
   }
 
   // --- Point Earning Logic for Daily Bonus Claim ---
-  Future<void> claimDailyBonusPoints() async {
-    final today = DateFormat('yyyy-MM-dd').format(DateTime.now().toLocal());
+Future<void> claimDailyBonusPoints() async {
+  final today = DateFormat('yyyy-MM-dd').format(DateTime.now().toLocal());
 
-    if (_hasClaimedToday) {
-      debugPrint('🚫 Already claimed daily bonus points for today.');
-      return;
-    }
-
-    // Ensure the user has earned the maximum daily points from steps to be eligible for the bonus
-    if (dailyPointsEarned < maxDailyPoints) {
-      debugPrint('🚫 Cannot claim daily bonus. Need to earn ${maxDailyPoints - dailyPointsEarned} more points from steps to reach $maxDailyPoints.');
-      return;
-    }
-
-    try {
-      _totalPoints += maxDailyPoints; // Add the 100 bonus points
-      setClaimedToday(true); // Mark as claimed for today
-
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt('totalPoints', _totalPoints);
-
-      // Update Firestore to reflect the claim status and new total points
-      await _databaseService.updateDailyClaimStatus(
-        date: today,
-        claimed: true,
-        totalPoints: _totalPoints, // Pass the NEW total after bonus
-      );
-
-      debugPrint('✅ Successfully claimed $maxDailyPoints daily bonus points! New total: $_totalPoints');
-    } catch (e, stackTrace) {
-      debugPrint('❌ Failed to claim daily bonus points: $e');
-      debugPrint('Stack Trace: $stackTrace');
-      // Revert local changes if database update fails
-      _totalPoints -= maxDailyPoints;
-      setClaimedToday(false);
-    } finally {
-      _safeNotifyListeners();
-    }
+  if (_hasClaimedToday || dailyPointsEarned < maxDailyPoints) {
+    debugPrint('🚫 Claim rejected. Either already claimed or not enough steps.');
+    return;
   }
+
+  try {
+    // Get latest totalPoints from DB
+    final latestTotal = await _databaseService.getTotalPointsFromUserProfile();
+    _totalPoints = latestTotal + maxDailyPoints;
+
+    setClaimedToday(true);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('totalPoints', _totalPoints);
+
+    // Update both dailyStats and main user profile
+    await _databaseService.updateDailyClaimStatus(
+      date: today,
+      claimed: true,
+      totalPoints: _totalPoints,
+    );
+
+    debugPrint('✅ Claimed daily bonus. Total points: $_totalPoints');
+  } catch (e, stackTrace) {
+    debugPrint('❌ Failed to claim bonus: $e');
+    debugPrint('Stack Trace: $stackTrace');
+    _totalPoints -= maxDailyPoints; // revert
+    setClaimedToday(false);
+  } finally {
+    _safeNotifyListeners();
+  }
+}
+
 
   // --- Point Redemption Logic (for spending accumulated points) ---
   // This method is for spending points, not earning them.
@@ -502,7 +527,7 @@ class StepTracker with ChangeNotifier {
     }
   }
 
-  Future<void> resetMockSteps() async {
+Future<void> resetMockSteps() async {
   if (kDebugMode) {
     debugPrint('🧹 [Mock] Resetting mock steps to 0.');
 
@@ -513,6 +538,8 @@ class StepTracker with ChangeNotifier {
     await prefs.setInt('dailySteps', 0);
     await prefs.setInt('dailyStepBaseline', 0);
 
+    setClaimedToday(false); // ✅ Reset claim status for debug
+
     // Sync to Firestore
     final today = DateFormat('yyyy-MM-dd').format(DateTime.now().toLocal());
     try {
@@ -522,6 +549,7 @@ class StepTracker with ChangeNotifier {
         dailyPointsEarned: dailyPointsEarned,
         streak: _currentStreak,
         totalPoints: _totalPoints,
+        claimedDailyBonus: false, // ✅ Also reset in Firestore
       );
       debugPrint('✅ [Mock] Step reset synced to database.');
     } catch (e, stackTrace) {
@@ -548,4 +576,18 @@ class StepTracker with ChangeNotifier {
     _isDisposed = true;
     super.dispose();
   }
+
+  Future<void> loadTotalPointsFromDB() async {
+  try {
+    _totalPoints = await _databaseService.getTotalPointsFromUserProfile();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('totalPoints', _totalPoints);
+    _safeNotifyListeners();
+    debugPrint('🔄 Synced totalPoints from Firestore: $_totalPoints');
+  } catch (e) {
+    debugPrint('❌ Failed to load totalPoints from Firestore: $e');
+  }
+}
+
+
 }

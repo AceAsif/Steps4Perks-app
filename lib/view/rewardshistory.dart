@@ -1,12 +1,9 @@
 import 'package:flutter/material.dart';
-/*
-import 'package:provider/provider.dart';
-import 'package:myapp/services/database_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:myapp/services/database_service.dart';
+import 'package:myapp/view/rewardItem.dart';
 import 'package:intl/intl.dart';
-*/
 
-/// Displays the history of claimed rewards, fetching data from Firebase Firestore.
 class RewardHistoryPage extends StatefulWidget {
   const RewardHistoryPage({super.key});
 
@@ -15,99 +12,127 @@ class RewardHistoryPage extends StatefulWidget {
 }
 
 class _RewardHistoryPageState extends State<RewardHistoryPage> {
-  // DatabaseService instance can be final here as it doesn't depend on BuildContext
-  //final DatabaseService _databaseService = DatabaseService();
+  late Future<List<RewardItem>> _rewardsFuture;
 
   @override
   void initState() {
     super.initState();
-    // No stream initialization here anymore. It will be done inside the builder.
-    debugPrint('RewardHistoryPage: initState called. DatabaseService initialized.');
+    _rewardsFuture = _fetchRewardHistory();
+  }
+
+  Future<List<RewardItem>> _fetchRewardHistory() async {
+    final userId = await DatabaseService().getDeviceId();
+    debugPrint("Fetching rewards for userId: $userId");
+
+    final snapshot = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(userId)
+        .collection('redeemed_rewards')
+        .where('status', whereIn: ['fulfilled', 'expired'])
+        .get();
+
+    return snapshot.docs.map((doc) {
+      final data = doc.data();
+      return RewardItem.fromFirestore(doc.id, data);
+    }).toList();
   }
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
-      child: Text(
-        'Reward history feature is coming soon!',
-        style: TextStyle(fontSize: 16),
-      ),
+    return FutureBuilder<List<RewardItem>>(
+      future: _rewardsFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (!snapshot.hasData || snapshot.data!.isEmpty) {
+          return const Center(child: Text("No claimed or expired rewards yet."));
+        }
+
+        final rewards = snapshot.data!;
+
+        return ListView.separated(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: rewards.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 16),
+          itemBuilder: (context, index) {
+            final reward = rewards[index];
+            return _ClaimedGiftCard(
+              icon: Icons.card_giftcard,
+              title: reward.rewardName,
+              subtitle: '\$${reward.value} | ${reward.pointsCost} points',
+              status: reward.status,
+              date: reward.timestamp,
+            );
+          },
+        );
+      },
     );
   }
 }
 
-/*
-/// A widget to display a single claimed gift card/reward in the history.
 class _ClaimedGiftCard extends StatelessWidget {
   final IconData icon;
   final String title;
   final String subtitle;
   final String status;
-  final Timestamp? timestamp;
+  final DateTime date;
 
   const _ClaimedGiftCard({
     required this.icon,
     required this.title,
     required this.subtitle,
     required this.status,
-    this.timestamp,
+    required this.date,
   });
 
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
-    final bodyTextColor = Theme.of(context).textTheme.bodyLarge?.color ?? Colors.black;
-    final subtitleColor = Theme.of(context).textTheme.bodyMedium?.color ?? Colors.black87;
-
-    final String dateString = timestamp != null
-        ? DateFormat('MMM dd, yyyy HH:mm').format(timestamp!.toDate())
-        : 'Date N/A';
+    final dateString = DateFormat('MMM dd, yyyy').format(date);
 
     return Container(
-      padding: const EdgeInsets.all(12),
+      constraints: const BoxConstraints(minHeight: 100),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black12,
-            blurRadius: 5,
-            offset: const Offset(0, 2),
+            color: Colors.grey.shade300,
+            blurRadius: 10,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: screenWidth * 0.12, color: Colors.deepOrange),
+          Icon(icon, size: 32, color: Colors.deepOrange),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: screenWidth * 0.045,
-                    fontWeight: FontWeight.bold,
-                    color: bodyTextColor,
-                  ),
-                ),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    fontSize: screenWidth * 0.038,
-                    color: subtitleColor,
-                  ),
-                ),
+                Text(title,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    )),
                 const SizedBox(height: 4),
-                Text(
-                  'Claimed on: $dateString',
-                  style: TextStyle(
-                    fontSize: screenWidth * 0.03,
-                    color: Colors.grey[600],
-                  ),
-                ),
+                Text(subtitle,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: Colors.black87,
+                    )),
+                const SizedBox(height: 4),
+                Text('Claimed on: $dateString',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                    )),
               ],
             ),
           ),
@@ -115,15 +140,19 @@ class _ClaimedGiftCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
-              color: status == 'fulfilled' ? Colors.green[100] : Colors.orange[100],
+              color: status == 'fulfilled'
+                  ? Colors.green[100]
+                  : Colors.orange[100],
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
               status.toUpperCase(),
               style: TextStyle(
-                fontSize: screenWidth * 0.035,
+                fontSize: 12,
                 fontWeight: FontWeight.bold,
-                color: status == 'fulfilled' ? Colors.green[700] : Colors.orange[700],
+                color: status == 'fulfilled'
+                    ? Colors.green[700]
+                    : Colors.orange[700],
               ),
             ),
           ),
@@ -132,4 +161,3 @@ class _ClaimedGiftCard extends StatelessWidget {
     );
   }
 }
-*/
