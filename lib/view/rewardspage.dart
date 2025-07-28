@@ -3,9 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:myapp/features/step_tracker.dart';
 import 'package:myapp/view/rewardshistory.dart';
 import 'package:myapp/services/database_service.dart';
-import 'package:myapp/models/available_reward_item.dart'; // <--- NEW IMPORT
-import 'package:myapp/models/redeemed_reward_history_item.dart'; // <--- NEW IMPORT (though not directly used in this file's UI, it's good for context)
-
+import 'package:myapp/models/available_reward_item.dart';
 
 class RewardsPage extends StatefulWidget {
   const RewardsPage({super.key});
@@ -15,53 +13,43 @@ class RewardsPage extends StatefulWidget {
 }
 
 class _RewardsPageState extends State<RewardsPage> {
-  int _selectedTab = 0;
-  List<AvailableRewardItem> _rewards = []; // <--- CHANGE TYPE HERE
-  bool _isLoadingAvailableRewards = true; // <--- ADD THIS LOADING STATE
+  int _selectedTab = 0; // Renamed from selectedTabIndex for consistency with RewardsPage's original code
+  List<AvailableRewardItem> _rewards = [];
+  bool _isLoadingAvailableRewards = true;
 
-  // <--- ADD THIS VARIABLE ---
-  Key _historyPageKey = UniqueKey(); // Initial key for RewardHistoryPage
-  // <--- END ADDED VARIABLE ---
+  Key _historyPageKey = UniqueKey();
 
   @override
   void initState() {
     super.initState();
     _loadAvailableRewards();
-    // Also load total points when the page initializes to ensure it's up to date
-    // listen: false because we are just calling a method, not setting up a listener.
     Provider.of<StepTracker>(context, listen: false).loadTotalPointsFromDB();
   }
 
   Future<void> _refresh() async {
-    // Set loading state for refresh
     setState(() {
       _isLoadingAvailableRewards = true;
     });
-    // First, refresh total points from the database
     await Provider.of<StepTracker>(context, listen: false).loadTotalPointsFromDB();
-    // Then, reload available rewards
-    await _loadAvailableRewards(); // This will handle setting _isLoadingAvailableRewards to false
-    // No need for a final setState here, _loadAvailableRewards handles its own state updates.
+    await _loadAvailableRewards();
   }
 
   Future<void> _loadAvailableRewards() async {
     setState(() {
-      _isLoadingAvailableRewards = true; // Set loading state
+      _isLoadingAvailableRewards = true;
     });
     try {
-      // No need for userId here as fetchAvailableRewards is global (from rewards_catalogue)
-      final fetchedRewards = await DatabaseService().fetchAvailableRewards(); // <--- CALL NEW FUNCTION
+      final fetchedRewards = await DatabaseService().fetchAvailableRewards();
       setState(() {
         _rewards = fetchedRewards;
-        _isLoadingAvailableRewards = false; // Reset loading state on success
+        _isLoadingAvailableRewards = false;
       });
     } catch (e) {
       debugPrint('Error loading available rewards: $e');
       setState(() {
-        _rewards = []; // Clear rewards on error
-        _isLoadingAvailableRewards = false; // Reset loading state on error
+        _rewards = [];
+        _isLoadingAvailableRewards = false;
       });
-      // Optionally, show a SnackBar or error message to the user
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to load rewards: ${e.toString()}')),
@@ -85,14 +73,16 @@ class _RewardsPageState extends State<RewardsPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _buildTotalPoints(stepTracker),
-                _buildTabSwitch(),
+                // MODIFIED: Padding to match ActivityPage for the tab switch
                 Padding(
-                  padding: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.symmetric(horizontal: 30.0, vertical: 12.0),
+                  child: _buildTabSwitch(),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(20), // This padding is for the content below tabs
                   child: _selectedTab == 0
                       ? _buildAvailableRewards(stepTracker)
-                  // <--- MODIFIED HERE ---
-                      : RewardHistoryPage(key: _historyPageKey), // <--- PASS THE KEY HERE
-                  // <--- END MODIFIED HERE ---
+                      : RewardHistoryPage(key: _historyPageKey),
                 ),
               ],
             ),
@@ -112,49 +102,54 @@ class _RewardsPageState extends State<RewardsPage> {
     );
   }
 
+  // REFACTORED: _buildTabSwitch to match ActivityPage's outer container
   Widget _buildTabSwitch() {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      // Outer container styling copied from ActivityPage's Row parent
       decoration: BoxDecoration(
-        color: Colors.grey.shade300,
-        borderRadius: BorderRadius.circular(50),
+        color: Colors.transparent, // Background color for the segment control itself
+        borderRadius: BorderRadius.circular(25), // Adjusted for desired roundness
       ),
       child: Row(
         children: [
-          _buildTab('Available', 0),
-          _buildTab('History', 1),
+          _buildTab("Available", 0),
+          const SizedBox(width: 8), // Gap between tabs
+          _buildTab("History", 1),
         ],
       ),
     );
   }
 
+  // REFACTORED: _buildTab to match ActivityPage's _buildTabButton
   Expanded _buildTab(String label, int index) {
     final isSelected = _selectedTab == index;
+    final screenWidth = MediaQuery.of(context).size.width; // Get screen width for responsive sizing
+
     return Expanded(
       child: GestureDetector(
-        onTap: () { // <--- MODIFIED HERE
+        onTap: () {
           setState(() {
             _selectedTab = index;
-            // <--- ADD THIS LOGIC ---
-            // If switching to History tab, generate a new key to force rebuild
             if (_selectedTab == 1) {
               _historyPageKey = UniqueKey();
             }
-            // <--- END ADDED LOGIC ---
           });
-        }, // <--- END MODIFIED HERE
+        },
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12),
+          // Inner tab styling copied from ActivityPage's _buildTabButton
+          padding: EdgeInsets.symmetric(vertical: screenWidth * 0.025), // Responsive vertical padding
           decoration: BoxDecoration(
-            color: isSelected ? Colors.black : Colors.transparent,
-            borderRadius: BorderRadius.circular(50),
+            color: isSelected ? Colors.black : const Color(0xFFE6E6E6), // Dark grey for unselected
+            borderRadius: BorderRadius.circular(25), // Matched borderRadius
           ),
-          alignment: Alignment.center,
-          child: Text(
-            label,
-            style: TextStyle(
-              color: isSelected ? Colors.white : Colors.black87,
-              fontWeight: FontWeight.bold,
+          child: Center(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? Colors.white : Colors.black, // White text for selected, black for unselected
+                fontWeight: FontWeight.w600, // Matched font weight
+                fontSize: screenWidth * 0.04, // Responsive font size
+              ),
             ),
           ),
         ),
@@ -163,7 +158,7 @@ class _RewardsPageState extends State<RewardsPage> {
   }
 
   Widget _buildAvailableRewards(StepTracker tracker) {
-    if (_isLoadingAvailableRewards) { // <--- Handle loading state for available rewards
+    if (_isLoadingAvailableRewards) {
       return const Center(child: CircularProgressIndicator());
     }
     if (_rewards.isEmpty) {
@@ -173,12 +168,11 @@ class _RewardsPageState extends State<RewardsPage> {
     return Column(
       children: _rewards.map((reward) {
         final canClaim = tracker.totalPoints >= reward.pointsCost;
-        // Avoid division by zero if pointsCost is 0
         final progress = reward.pointsCost > 0 ? tracker.totalPoints / reward.pointsCost : 0.0;
 
         return _buildRewardCard(
-          icon: Icons.card_giftcard, // <--- Still pass a default icon for fallback
-          imageUrl: reward.imageUrl, // <--- Pass the imageUrl from the AvailableRewardItem
+          icon: Icons.card_giftcard,
+          imageUrl: reward.imageUrl,
           title: reward.rewardName,
           subtitle: '${tracker.totalPoints} / ${reward.pointsCost} points',
           progress: progress,
@@ -190,33 +184,26 @@ class _RewardsPageState extends State<RewardsPage> {
     );
   }
 
-  // MODIFIED: _handleRewardClaim now takes AvailableRewardItem and passes necessary data to addRedeemedReward
   Future<void> _handleRewardClaim(StepTracker tracker, AvailableRewardItem reward) async {
-    // Pass the specific pointsCost of the reward to the redeemPoints method
-    final redeemedPoints = await tracker.redeemPoints(reward.pointsCost); // <--- PASS POINTS COST
+    final redeemedPoints = await tracker.redeemPoints(reward.pointsCost);
 
     if (redeemedPoints > 0) {
-      // Add the redeemed reward to the user's history collection
       await DatabaseService().addRedeemedReward(
         rewardType: reward.rewardType,
         value: reward.value,
-        status: 'completed', // Or 'pending', 'processing' if human action is needed
-        giftCardCode: 'RWD-${DateTime.now().millisecondsSinceEpoch}', // Generate a simple unique code
-        rewardName: reward.rewardName,   // <--- Pass the reward name for history
-        pointsCost: reward.pointsCost,   // <--- Pass the points cost for history
-        imageUrl: reward.imageUrl, // <--- PASS THE IMAGE URL HERE
+        status: 'completed',
+        giftCardCode: 'RWD-${DateTime.now().millisecondsSinceEpoch}',
+        rewardName: reward.rewardName,
+        pointsCost: reward.pointsCost,
+        imageUrl: reward.imageUrl,
       );
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('🎉 Redeemed ${reward.pointsCost} points for ${reward.rewardName}!')),
       );
-      // Refresh available rewards (if any should disappear after claiming) and total points
-      // Total points will automatically update via Provider listener if loadTotalPointsFromDB() is called by StepTracker.
-      // Reloading available rewards might be unnecessary if rewards don't disappear after one claim.
-      // But it's good practice for state consistency after an action.
-      await _loadAvailableRewards(); // Reload to reflect any changes if applicable
-      await Provider.of<StepTracker>(context, listen: false).loadTotalPointsFromDB(); // Ensure UI updates
+      await _loadAvailableRewards();
+      await Provider.of<StepTracker>(context, listen: false).loadTotalPointsFromDB();
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('❌ Not enough points to redeem.')),
@@ -226,7 +213,7 @@ class _RewardsPageState extends State<RewardsPage> {
 
   Widget _buildRewardCard({
     required IconData icon,
-    String? imageUrl,      // <--- This is the optional parameter
+    String? imageUrl,
     required String title,
     required String subtitle,
     required double progress,
@@ -250,19 +237,18 @@ class _RewardsPageState extends State<RewardsPage> {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [ // <--- This is the children list for the main Column
-          Row( // <--- This is the Row widget
-            children: [ // <--- This is the children list for the Row
-              // Conditional display: Image if imageUrl exists, otherwise Icon
+        children: [
+          Row(
+            children: [
               if (imageUrl != null && imageUrl.isNotEmpty)
                 ClipRRect(
-                  borderRadius: BorderRadius.circular(8.0), // Adjust for desired roundness
-                  child: Image.network( // Using Image.network for now
+                  borderRadius: BorderRadius.circular(8.0),
+                  child: Image.network(
                     imageUrl,
-                    width: 48, // Adjust size as needed
-                    height: 48, // Adjust size as needed
-                    fit: BoxFit.cover, // Ensures image covers the space
-                    errorBuilder: (context, error, stackTrace) => Container( // Fallback for image loading error
+                    width: 48,
+                    height: 48,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) => Container(
                       width: 48, height: 48,
                       color: Colors.grey[200],
                       child: Icon(Icons.broken_image, color: Colors.grey[400]),
@@ -270,7 +256,7 @@ class _RewardsPageState extends State<RewardsPage> {
                   ),
                 )
               else
-                Icon(icon, size: 32, color: progressColor), // Fallback icon
+                Icon(icon, size: 32, color: progressColor),
 
               const SizedBox(width: 12),
               Expanded(
@@ -288,10 +274,8 @@ class _RewardsPageState extends State<RewardsPage> {
                 ),
                 child: const Text('Claim'),
               ),
-            ], // <--- CLOSING BRACKET FOR THE ROW'S CHILDREN LIST
+            ],
           ),
-
-          // These widgets belong directly in the Column's children, after the Row
           const SizedBox(height: 8),
           Text(subtitle, style: TextStyle(color: Colors.grey[700])),
           const SizedBox(height: 10),
@@ -304,7 +288,7 @@ class _RewardsPageState extends State<RewardsPage> {
               valueColor: AlwaysStoppedAnimation<Color>(progressColor),
             ),
           ),
-        ], // <--- CLOSING BRACKET FOR THE COLUMN'S CHILDREN LIST
+        ],
       ),
     );
   }
