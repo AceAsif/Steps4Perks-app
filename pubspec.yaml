@@ -78,6 +78,8 @@ dependencies:
   #google_mobile_ads: ^6.0.0
   # shimmer is a Flutter package that provides a customizable shimmer effect widget, commonly used as a loading indicator for content.
   shimmer: ^3.0.0
+  # A flutter library to show images from the internet and keep them in the cache directory.
+  cached_network_image: ^3.4.1
 
 
 dev_dependencies:
