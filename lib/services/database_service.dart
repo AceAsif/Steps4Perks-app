@@ -422,6 +422,7 @@ class DatabaseService {
       final snapshot = await _firestore
           .collection('rewards_catalogue')
           .where('isActive', isEqualTo: true)
+          .orderBy('rewardName') // Order by rewardName
           .get();
 
       return snapshot.docs

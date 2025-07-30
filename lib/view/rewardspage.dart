@@ -41,7 +41,10 @@ class _RewardsPageState extends State<RewardsPage> {
     try {
       final fetchedRewards = await DatabaseService().fetchAvailableRewards();
       setState(() {
-        _rewards = fetchedRewards;
+         _rewards = [
+          ...fetchedRewards.where((r) => r.rewardType != 'booster'),
+          ...fetchedRewards.where((r) => r.rewardType == 'booster'),
+        ];
         _isLoadingAvailableRewards = false;
       });
     } catch (e) {
