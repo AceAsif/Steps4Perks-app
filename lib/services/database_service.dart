@@ -177,10 +177,10 @@ class DatabaseService {
       }
 
       // Decrement points in the user's main profile document.
-      transaction.update(userProfileRef, {
+      transaction.set(userProfileRef, { // <--- CHANGED FROM update to set
         'totalPoints': FieldValue.increment(-pointsToRedeem),
         'lastRedeemedAt': FieldValue.serverTimestamp(), // Timestamp of this redemption
-      });
+      }, SetOptions(merge: true)); // <--- ADDED SetOptions(merge: true)
 
       // Optionally, log the redeemed amount for the specific day in dailyStats.
       final dailyStatsDocRef = await _getDailyStatsDocRef(date);
