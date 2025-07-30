@@ -1,7 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
-import 'package:intl/intl.dart'; // Added for date formatting
+import 'package:myapp/features/step_tracker.dart'; // Keep this if StepTracker is still used directly here
+import 'package:intl/intl.dart';
+
+// NEW IMPORTS FOR THE REWARD MODELS
+import 'package:myapp/models/available_reward_item.dart';
+import 'package:myapp/models/redeemed_reward_history_item.dart';
 
 class DatabaseService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -60,14 +65,15 @@ class DatabaseService {
 
   // --- Core Data Operations ---
 
-  /// Saves or updates daily step statistics and total points for a specific date.
+  /// Saves or updates daily step statistics for a specific date.
   /// Data is stored under the consistent path: `users/{deviceId}/dailyStats/{date}`.
+  /// Total points are now managed primarily in the main user profile document.
   Future<void> saveStatsAndPoints({
     required String date,
     required int steps,
     required int dailyPointsEarned,
     required int streak,
-    required int totalPoints,
+    // Removed totalPoints from here as it should be managed centrally
     bool claimedDailyBonus = false,
   }) async {
     final docRef = await _getDailyStatsDocRef(date); // Use the consistent path helper
@@ -79,7 +85,6 @@ class DatabaseService {
       'steps': steps,
       'dailyPointsEarned': dailyPointsEarned,
       'streak': streak,
-      'totalPoints': totalPoints, // Store total points for consistency and easy retrieval
       'claimedDailyBonus': claimedDailyBonus, // Store the daily bonus claim status
       'lastUpdated': FieldValue.serverTimestamp(), // Timestamp of the last update
       // Add a dedicated timestamp field for range queries (e.g., for charts)
@@ -96,19 +101,19 @@ class DatabaseService {
     }
   }
 
-  /// Updates only the daily bonus claim status and total points for a specific date.
+  /// Updates only the daily bonus claim status for a specific date.
   /// Data is updated under the consistent path: `users/{deviceId}/dailyStats/{date}`.
+  /// Total points are now managed primarily in the main user profile document.
   Future<void> updateDailyClaimStatus({
     required String date,
     required bool claimed,
-    required int totalPoints, // The new total points after claiming the bonus
+    // Removed totalPoints from here as it should be managed centrally
   }) async {
     final docRef = await _getDailyStatsDocRef(date); // Use the consistent path helper
 
     try {
       await docRef.set({
         'claimedDailyBonus': claimed,
-        'totalPoints': totalPoints, // Update total points in daily record as well
         'lastUpdated': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
       debugPrint('✅ Daily bonus claim status updated for $date: $claimed.');
@@ -144,21 +149,14 @@ class DatabaseService {
   Future<bool> redeemDailyPoints({
     required String date, // Date for logging the daily redemption amount
     required int pointsToRedeem,
-    required int currentTotalPoints, // The total points after local deduction
+    required int currentTotalPoints, // The total points after local deduction (for transaction check)
   }) async {
     final deviceId = await getDeviceId();
     // Reference to the main user profile document where overall total points are stored.
-    // This is distinct from dailyStats and holds the grand total.
     final userProfileRef = _firestore.collection('users').doc(deviceId);
 
     return await _firestore.runTransaction((transaction) async {
       final userSnapshot = await transaction.get(userProfileRef);
-
-      if (!userSnapshot.exists) {
-        debugPrint('User profile document does not exist for redemption. Cannot redeem points.');
-        // You might want to create the user profile document here if it's expected to exist.
-        return false;
-      }
 
       // Safely get the current total points from the database.
       int currentDbTotalPoints = userSnapshot.data()?['totalPoints'] as int? ?? 0;
@@ -169,14 +167,14 @@ class DatabaseService {
       }
 
       // Decrement points in the user's main profile document.
-      transaction.update(userProfileRef, {
+      // Use .set with merge:true to create document if it doesn't exist, or merge if it does.
+      transaction.set(userProfileRef, {
         'totalPoints': FieldValue.increment(-pointsToRedeem),
         'lastRedeemedAt': FieldValue.serverTimestamp(), // Timestamp of this redemption
-      });
+      }, SetOptions(merge: true));
 
       // Optionally, log the redeemed amount for the specific day in dailyStats.
-      // This is separate from the 'claimedDailyBonus'.
-      final dailyStatsDocRef = await _getDailyStatsDocRef(date); // Use the consistent path helper
+      final dailyStatsDocRef = await _getDailyStatsDocRef(date);
       transaction.set(dailyStatsDocRef, {
         'pointsRedeemedToday': FieldValue.increment(pointsToRedeem), // Track amount redeemed today
         'lastRedeemedTimestamp': FieldValue.serverTimestamp(), // Timestamp of this specific redemption
@@ -313,6 +311,126 @@ class DatabaseService {
     } catch (e, stackTrace) {
       debugPrint('❌ DatabaseService: Failed to delete dailyStats: $e');
       debugPrint('Stack Trace: $stackTrace');
+    }
+  }
+
+  // MODIFIED: addRedeemedReward to accept rewardName and pointsCost for history
+  Future<void> addRedeemedReward({
+    required String rewardType,
+    required num value,
+    required String status,
+    String? giftCardCode,
+    String? rewardName,
+    int? pointsCost,
+    String? imageUrl,
+  }) async {
+    try {
+      final deviceId = await getDeviceId();
+      final rewardRef = _firestore
+          .collection('users')
+          .doc(deviceId)
+          .collection('redeemed_rewards')
+          .doc(); // auto ID
+
+      final data = {
+        'rewardType': rewardType,
+        'value': value,
+        'status': status,
+        'timestamp': FieldValue.serverTimestamp(),
+        if (giftCardCode != null) 'giftCardCode': giftCardCode,
+        if (rewardName != null) 'rewardName': rewardName,
+        if (pointsCost != null) 'pointsCost': pointsCost,
+        if (imageUrl != null) 'imageUrl': imageUrl,
+      };
+
+      await rewardRef.set(data);
+
+      debugPrint('🎁 addRedeemedReward: Added $rewardType reward with value $value');
+    } catch (e, stackTrace) {
+      debugPrint('❌ addRedeemedReward error: $e');
+      debugPrint('Stack Trace: $stackTrace');
+    }
+  }
+
+  Future<void> claimDailyPoints() async {
+    final deviceId = await getDeviceId();
+    final userRef = _firestore.collection('users').doc(deviceId);
+    final today = DateFormat('yyyy-MM-dd').format(DateTime.now().toLocal());
+    final dailyStatsRef = userRef.collection('dailyStats').doc(today);
+
+    await _firestore.runTransaction((transaction) async {
+      final userSnapshot = await transaction.get(userRef);
+      // Get existing total points, default to 0 if document/field doesn't exist
+      final int currentTotalPoints = (userSnapshot.data()?['totalPoints'] as int? ?? 0);
+
+      // 1. update user profile totalPoints. Use .set with merge:true to create if not exists.
+      transaction.set(userRef, {
+        'totalPoints': currentTotalPoints + StepTracker.maxDailyPoints,
+        'lastClaimedAt': FieldValue.serverTimestamp(), // Track when points were last claimed
+      }, SetOptions(merge: true));
+
+      // 2. update today’s dailyStats document
+      transaction.set(dailyStatsRef, {
+        'claimedDailyBonus': true,
+        'dailyPointsEarned': StepTracker.maxDailyPoints,
+        'date': today,
+        'lastUpdated': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    });
+  }
+
+  // MODIFIED: getTotalPointsFromUserProfile to fetch from the main user document
+  Future<int> getTotalPointsFromUserProfile() async {
+    final deviceId = await getDeviceId();
+    final userProfileRef = _firestore.collection('users').doc(deviceId);
+    try {
+      final userSnapshot = await userProfileRef.get();
+      if (userSnapshot.exists) {
+        return userSnapshot.data()?['totalPoints'] as int? ?? 0;
+      } else {
+        return 0; // User profile document doesn't exist
+      }
+    } catch (e) {
+      debugPrint('Error getting total points from user profile: $e');
+      return 0; // Return 0 on error
+    }
+  }
+
+  // MODIFIED: fetchRedeemedRewards to return List<RedeemedRewardHistoryItem>
+  Future<List<RedeemedRewardHistoryItem>> fetchRedeemedRewards(String deviceId) async {
+    try {
+      final rewardRef = _firestore
+          .collection('users')
+          .doc(deviceId)
+          .collection('redeemed_rewards');
+
+      final querySnapshot = await rewardRef.get();
+      final rewardList = querySnapshot.docs.map((doc) {
+        return RedeemedRewardHistoryItem.fromFirestore(doc.id, doc.data());
+      }).toList();
+
+      return rewardList;
+    } catch (e) {
+      debugPrint('Error fetching redeemed rewards: $e'); // <--- CHANGE FROM print TO debugPrint
+      return [];
+    }
+  }
+
+  // MODIFIED: fetchAvailableRewards to query rewards_catalogue and return List<AvailableRewardItem>
+  Future<List<AvailableRewardItem>> fetchAvailableRewards() async {
+    try {
+      final snapshot = await _firestore
+          .collection('rewards_catalogue')
+          .where('isActive', isEqualTo: true)
+          .orderBy('rewardName') // Order by rewardName
+          .get();
+
+      return snapshot.docs
+          .map((doc) => AvailableRewardItem.fromFirestore(doc.id, doc.data()))
+          .toList();
+    } catch (e) {
+      debugPrint('Error fetching available rewards: $e');
+      return [];
     }
   }
 }
