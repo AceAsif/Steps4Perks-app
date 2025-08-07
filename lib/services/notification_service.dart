@@ -1,67 +1,55 @@
+import 'dart:math' as math;
+import 'dart:developer';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz;
-import 'package:flutter/foundation.dart';
-import 'dart:io';
-import 'package:flutter/material.dart';
-import 'package:permission_handler/permission_handler.dart'; // Still useful for general permission status checks
-import 'package:device_info_plus/device_info_plus.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
 
 import '../main.dart';
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
   factory NotificationService() => _instance;
-
   NotificationService._internal();
 
   final FlutterLocalNotificationsPlugin _notificationsPlugin =
   FlutterLocalNotificationsPlugin();
   final FirebaseMessaging _firebaseMessaging = FirebaseMessaging.instance;
 
-  /// Initialize the notification plugin + timezone setup + FCM listeners
-  /// This method sets up listeners and gets the FCM token, but doesn't
-  /// explicitly trigger the permission prompt. Use requestNotificationPermissions() for that.
   Future<void> initialize() async {
+    // Initialize timezone data
     tz.initializeTimeZones();
-    debugPrint("✅ Timezones initialized for local notifications.");
+    debugPrint("✅ Timezones initialized");
 
-    const androidSettings = AndroidInitializationSettings(
-      '@mipmap/ic_launcher',
-    );
-    const iosSettings = DarwinInitializationSettings();
-    const settings = InitializationSettings(
-      android: androidSettings,
-      iOS: iosSettings,
+    // <--- ADDED EXPLICIT TIMEZONE SETTING --->
+    final String currentTimeZone = DateTime.now().timeZoneName;
+    tz.setLocalLocation(tz.getLocation(currentTimeZone));
+    debugPrint('🌎 Local timezone set to: $currentTimeZone');
+    // <--- END ADDED EXPLICIT TIMEZONE SETTING --->
+
+    const initSettings = InitializationSettings(
+      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+      iOS: DarwinInitializationSettings(),
     );
 
     await _notificationsPlugin.initialize(
-      settings,
+      initSettings,
       onDidReceiveNotificationResponse: (response) {
-        // This handler runs when the app is in the foreground
-        debugPrint('🔔 Local Notification Tapped (Foreground) → Payload: ${response.payload}');
+        debugPrint('🔔 Local notification tapped → Payload: ${response.payload}');
       },
-      // <--- IMPORTANT CHANGE HERE --->
-      onDidReceiveBackgroundNotificationResponse: onDidReceiveBackgroundNotificationResponse, // <--- Use the top-level function
-      // <--- END IMPORTANT CHANGE --->
+      onDidReceiveBackgroundNotificationResponse: onDidReceiveBackgroundNotificationResponse,
     );
-    debugPrint("✅ FlutterLocalNotificationsPlugin initialized.");
 
-    // --- FCM Setup ---
-    // Only get the token and set up message listeners here.
-    // The explicit permission request is now in requestNotificationPermissions()
-    String? token = await _firebaseMessaging.getToken();
-    debugPrint("FCM Token: $token");
-    // Send this token to your backend server if needed
+    await _createNotificationChannels();
+
+    final fcmToken = await _firebaseMessaging.getToken();
+    debugPrint("📱 FCM Token: $fcmToken");
 
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      debugPrint('Got a FCM message whilst in the foreground!');
-      debugPrint('FCM Message data: ${message.data}');
-
       if (message.notification != null) {
-        debugPrint('FCM Message also contained a notification: ${message.notification}');
         _notificationsPlugin.show(
           message.hashCode,
           message.notification!.title,
@@ -70,119 +58,182 @@ class NotificationService {
             android: AndroidNotificationDetails(
               'fcm_default_channel',
               'FCM Notifications',
-              channelDescription: 'General notifications from Firebase Cloud Messaging',
               importance: Importance.max,
               priority: Priority.high,
+              playSound: true,
+              enableVibration: true,
             ),
-            iOS: DarwinNotificationDetails(),
           ),
-          payload: message.data['payload_key'] ?? message.notification?.title,
         );
       }
     });
-
-    RemoteMessage? initialMessage = await _firebaseMessaging.getInitialMessage();
-    if (initialMessage != null) {
-      debugPrint("App opened from terminated state by FCM notification: ${initialMessage.data}");
-    }
-
-    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      debugPrint('App opened from background by FCM notification: ${message.data}');
-    });
-
-    debugPrint("✅ NotificationService initialized with FCM setup complete.");
   }
 
-  // <--- RE-DEFINED PUBLIC METHOD FOR REQUESTING PERMISSIONS --->
-  /// Requests notification permissions from the system.
-  /// This method specifically triggers the system permission dialog.
-  /// Returns true if permission is granted, false otherwise.
-  Future<bool> requestNotificationPermissions() async {
-    // For Android 13+ and iOS, FirebaseMessaging.requestPermission is the way to go.
-    // It handles the underlying system prompts for both platforms.
-    NotificationSettings settings = await _firebaseMessaging.requestPermission(
-      alert: true,
-      announcement: false,
-      badge: true,
-      carPlay: false,
-      criticalAlert: false,
-      provisional: false,
-      sound: true,
+  Future<void> _createNotificationChannels() async {
+    final android = _notificationsPlugin
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    if (android == null) return;
+
+    await android.createNotificationChannel(
+      AndroidNotificationChannel(
+        'scheduled_reminder_channel',
+        'Scheduled Reminders',
+        description: 'Daily scheduled reminders',
+        importance: Importance.max,
+        playSound: true,
+        enableVibration: true,
+      ),
     );
 
-    // Check authorizationStatus to determine if granted
+    await android.createNotificationChannel(
+      AndroidNotificationChannel(
+        'immediate_test_channel',
+        'Immediate Test',
+        description: 'Test notifications immediately',
+        importance: Importance.max,
+        playSound: true,
+        enableVibration: true,
+      ),
+    );
+
+    await android.createNotificationChannel(
+      const AndroidNotificationChannel(
+        'fcm_default_channel',
+        'FCM Notifications',
+        description: 'Firebase Cloud Messaging push notifications',
+        importance: Importance.high,
+        playSound: true,
+        enableVibration: true,
+      ),
+    );
+
+    await android.createNotificationChannel(
+      AndroidNotificationChannel(
+        'scheduled_channel',
+        'Scheduled Notifications',
+        description: 'One-time scheduled notifications',
+        importance: Importance.max,
+        playSound: true,
+        enableVibration: true,
+      ),
+    );
+  }
+
+  Future<bool> requestNotificationPermissions() async {
+    final settings = await _firebaseMessaging.requestPermission();
     return settings.authorizationStatus == AuthorizationStatus.authorized;
   }
-  // <--- END RE-DEFINED PUBLIC METHOD --->
 
-  // You can add a method to get the FCM token if needed elsewhere
-  Future<String?> getFCMToken() async {
-    final String? token = await _firebaseMessaging.getToken(); // Fetch the token
-    debugPrint("FCM Token (from getFCMToken method): $token"); // <--- ADDED DEBUG PRINT HERE
-    return token; // Return the token
+  Future<void> cancelAllNotifications() async {
+    await _notificationsPlugin.cancelAll();
+    debugPrint("🗑️ All notifications cancelled.");
   }
 
-  /// Show an immediate notification (for testing/debugging)
-  Future<void> showImmediateNotification({String? title, String? body}) async {
+  Future<void> showImmediateNotification({
+    String title = '🚀 Test Notification',
+    String body = 'This is a test.',
+  }) async {
     await _notificationsPlugin.show(
       111,
-      title ?? '🚨 Immediate Test',
-      body ?? 'This is an immediate test notification.',
+      title,
+      body,
       const NotificationDetails(
         android: AndroidNotificationDetails(
           'immediate_test_channel',
           'Immediate Test',
           importance: Importance.max,
           priority: Priority.high,
+          playSound: true,
+          enableVibration: true,
         ),
       ),
     );
-    debugPrint("✅ Immediate local notification sent.");
+    debugPrint("✅ Immediate notification shown.");
   }
 
-  /// Schedule a daily notification at a specific hour & minute
   Future<void> scheduleNotification({
     required int id,
     required String title,
     required String body,
     required int hour,
     required int minute,
+    required AndroidScheduleMode scheduleMode,
   }) async {
-    final scheduledTime = _nextInstanceOfTime(hour, minute);
-    debugPrint('📅 Scheduling Local Notification → $title at $scheduledTime');
+    final time = _nextInstanceOfTime(hour, minute);
 
     await _notificationsPlugin.zonedSchedule(
       id,
       title,
       body,
-      scheduledTime,
+      time,
       const NotificationDetails(
         android: AndroidNotificationDetails(
           'scheduled_reminder_channel',
           'Scheduled Reminders',
           importance: Importance.max,
           priority: Priority.high,
+          playSound: true,
         ),
       ),
-      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      androidScheduleMode: scheduleMode,
       matchDateTimeComponents: DateTimeComponents.time,
     );
 
-    debugPrint("✅ Local Notification scheduled successfully for $scheduledTime");
+    debugPrint("⏰ Scheduled notification for $time");
   }
 
-  /// Schedules a daily reminder (wrapper for your app logic)
   Future<void> scheduleDailyReminderOnce({
     required int hour,
     required int minute,
+    required AndroidScheduleMode scheduleMode,
   }) async {
     await scheduleNotification(
       id: 100,
-      title: '🚶 Daily Reminder',
-      body: 'Remember to walk and earn points!',
+      title: '🏃 Daily Reminder',
+      body: 'Remember to walk and earn your reward!',
       hour: hour,
       minute: minute,
+      scheduleMode: scheduleMode,
     );
+  }
+
+  Future<int> zonedScheduleNotification({
+    required String note,
+    required DateTime date,
+    required String occ,
+  }) async {
+    final id = math.Random().nextInt(10000);
+    final scheduledDate = tz.TZDateTime.from(date, tz.local);
+
+    if (scheduledDate.isBefore(tz.TZDateTime.now(tz.local))) {
+      log("❌ Cannot schedule notification in the past.");
+      return -1;
+    }
+
+    try {
+      await _notificationsPlugin.zonedSchedule(
+        id,
+        occ,
+        note,
+        scheduledDate,
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'scheduled_channel',
+            'Scheduled Notifications',
+            playSound: true,
+            enableVibration: true,
+            largeIcon: DrawableResourceAndroidBitmap("logo"),
+            icon: "ic_launcher",
+          ),
+        ),
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        matchDateTimeComponents: null,
+      );
+      return id;
+    } catch (e) {
+      log("❌ Scheduling error: $e");
+      return -1;
+    }
   }
 
   Future<void> resetDailyReminderFlag() async {
@@ -192,17 +243,13 @@ class NotificationService {
 
   tz.TZDateTime _nextInstanceOfTime(int hour, int minute) {
     final now = tz.TZDateTime.now(tz.local);
-    var scheduledDate = tz.TZDateTime(
-      tz.local,
-      now.year,
-      now.month,
-      now.day,
-      hour,
-      minute,
-    );
-    if (scheduledDate.isBefore(now)) {
-      scheduledDate = scheduledDate.add(const Duration(days: 1));
+    var scheduled = tz.TZDateTime(tz.local, now.year, now.month, now.day, hour, minute);
+
+    final nowPlusSomeBuffer = now.add(const Duration(seconds: 5));
+
+    if (scheduled.isBefore(nowPlusSomeBuffer)) {
+      scheduled = scheduled.add(const Duration(days: 1));
     }
-    return scheduledDate;
+    return scheduled;
   }
 }

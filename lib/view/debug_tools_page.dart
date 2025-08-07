@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart'; // For kDebugMode
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // REQUIRED for SystemUiOverlayStyle
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:myapp/services/notification_service.dart';
 import 'package:myapp/services/database_service.dart';
 import 'package:provider/provider.dart';
@@ -73,6 +74,7 @@ class _DebugToolsPageState extends State<DebugToolsPage> {
                   body: 'This is a debug-mode-only test notification.',
                   hour: nextHour,
                   minute: testMinute,
+                  scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
                 );
 
                 if (context.mounted) {

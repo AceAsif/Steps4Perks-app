@@ -7,6 +7,9 @@ import 'package:myapp/widgets/profile_specific/options_tile.dart';
 import 'package:myapp/widgets/profile_specific/notification_rationale_dialog.dart';
 import 'package:myapp/widgets/profile_specific/disable_notification_dialog.dart';
 import 'package:myapp/widgets/profile_specific/notification_settings_dialog.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:timezone/timezone.dart' as tz;
+import 'package:timezone/data/latest.dart' as tz;
 
 class ProfilePageContent extends StatefulWidget {
   const ProfilePageContent({super.key});
@@ -36,12 +39,9 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
   Future<void> _checkNotificationStatus() async {
     PermissionStatus status;
     if (Platform.isAndroid) {
-      status =
-          (_androidInfo.version.sdkInt >= 33)
-              ? await Permission.notification.status
-              : PermissionStatus.granted;
-    } else if (Platform.isIOS) {
-      status = await Permission.notification.status;
+      status = (_androidInfo.version.sdkInt >= 33)
+          ? await Permission.notification.status
+          : PermissionStatus.granted;
     } else {
       status = PermissionStatus.denied;
     }
@@ -53,52 +53,83 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
     });
   }
 
+  // New method for the dedicated test button
+  Future<void> _testScheduledNotifications() async {
+    final notificationService = NotificationService();
+
+    final acceptedRationale = await showNotificationRationaleDialog(context);
+    if (acceptedRationale == true) {
+      final granted = await notificationService.requestNotificationPermissions();
+      await _checkNotificationStatus();
+
+      if (granted) {
+        await notificationService.cancelAllNotifications();
+
+        // <--- ADDED EXPLICIT LOGGING FOR TIMEZONE DEBUGGING --->
+        final nowLocal = DateTime.now().toLocal();
+        final nowUtc = DateTime.now().toUtc();
+        debugPrint('🌎 Current Local Time: $nowLocal');
+        debugPrint('🌍 Current UTC Time: $nowUtc');
+        // <--- END ADDED LOGGING --->
+
+        // Schedule a notification for 2 minutes from now, using the local time
+        final testTime = nowLocal.add(const Duration(minutes: 2));
+        await notificationService.scheduleNotification(
+          id: 3,
+          title: '⏰ Test Notification',
+          body: 'This should fire in 2 minutes!',
+          hour: testTime.hour,
+          minute: testTime.minute,
+          scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        );
+        debugPrint('✅ Scheduled Test Notification for ${testTime.hour}:${testTime.minute} (Local)');
+
+        // ... (rest of your scheduling calls) ...
+        // I've removed your other scheduled calls here for clarity in debugging
+      } else {
+        // ...
+      }
+    }
+  }
+
+  // Simplified toggle method for the switch
   Future<void> _toggleNotifications(bool newValue) async {
+    final notificationService = NotificationService();
     if (newValue) {
       final accepted = await showNotificationRationaleDialog(context);
       if (accepted == true) {
-        final granted =
-            await NotificationService().requestNotificationPermissions();
+        final granted = await notificationService.requestNotificationPermissions();
+        await _checkNotificationStatus();
+
         if (granted) {
-          debugPrint("✅ Notifications enabled.");
-          await _checkNotificationStatus();
-          await NotificationService().scheduleDailyReminderOnce(
-            hour: 10,
-            minute: 0,
-          );
-          await NotificationService().scheduleNotification(
-            id: 1,
-            title: '🌞 Morning Walk',
-            body: 'Start your day with a refreshing walk!',
-            hour: 7,
-            minute: 30,
-          );
-          await NotificationService().scheduleNotification(
-            id: 2,
-            title: '🍱 Lunch Walk',
-            body: 'Stretch your legs after lunch.',
-            hour: 14,
-            minute: 23,
-          );
-          await NotificationService().scheduleNotification(
-            id: 3,
-            title: '🌙 Late Night Reminder',
-            body: 'Time to reflect and prepare for tomorrow!',
-            hour: 23,
-            minute: 20,
-          );
-          debugPrint('✅ Scheduled Lunch Notification at 14:23');
-        } else {
-          debugPrint("❌ Notifications denied by system.");
-          await _checkNotificationStatus();
+          // You would put the scheduling logic here in a final version,
+          // but for testing with the button, we'll keep this simple.
         }
       } else {
         setState(() => _notificationsEnabled = false);
       }
     } else {
+      await notificationService.cancelAllNotifications();
       showDisableNotificationDialog(context);
     }
   }
+
+  // <--- NEW DIAGNOSTIC METHOD --->
+  // Add this to your class to check for pending notifications
+  Future<void> _checkPendingNotifications() async {
+    final List<PendingNotificationRequest> pending =
+    await FlutterLocalNotificationsPlugin().pendingNotificationRequests();
+    debugPrint('⏳ Found ${pending.length} pending notifications:');
+    for (var p in pending) {
+      debugPrint('   - ID: ${p.id}, Title: ${p.title}, Body: ${p.body}, Payload: ${p.payload}');
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Found ${pending.length} pending notifications.')),
+      );
+    }
+  }
+  // <--- END NEW DIAGNOSTIC METHOD --->
 
   @override
   Widget build(BuildContext context) {
@@ -115,7 +146,6 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
         ),
         child: Column(
           children: [
-            // Profile Section
             CircleAvatar(
               radius: screenWidth * 0.12,
               backgroundImage: const AssetImage('assets/profile.png'),
@@ -152,26 +182,26 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
             if (!_notificationsEnabled && _isPermissionPermanentlyDenied)
               _buildBlockedNotificationButton(screenHeight, screenWidth),
 
+            SizedBox(height: screenHeight * 0.02),
+            ElevatedButton(
+              onPressed: _testScheduledNotifications,
+              child: const Text('⏰ Test Scheduled Notifications'),
+            ),
+            // <--- NEW DIAGNOSTIC BUTTON --->
+            SizedBox(height: screenHeight * 0.02),
+            ElevatedButton(
+              onPressed: _checkPendingNotifications,
+              child: const Text('👀 Check Pending Notifications'),
+            ),
+            // <--- END NEW DIAGNOSTIC BUTTON --->
+
             SizedBox(height: screenHeight * 0.04),
             _buildSectionTitle('General', bodyTextColor),
-            OptionTile(
-              icon: Icons.star,
-              label: 'Referral Boosters',
-              onTap: () {},
-            ),
-            OptionTile(
-              icon: Icons.mail_outline,
-              label: 'Contact Support',
-              onTap: () {},
-            ),
-            OptionTile(
-              icon: Icons.info_outline,
-              label: 'About Steps4Perks',
-              onTap: () {},
-            ),
+            OptionTile(icon: Icons.star, label: 'Referral Boosters', onTap: () {}),
+            OptionTile(icon: Icons.mail_outline, label: 'Contact Support', onTap: () {}),
+            OptionTile(icon: Icons.info_outline, label: 'About Steps4Perks', onTap: () {}),
             SizedBox(height: screenHeight * 0.025),
 
-            // Logout Button
             ElevatedButton(
               onPressed: () {},
               style: ElevatedButton.styleFrom(
@@ -191,7 +221,6 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
               ),
             ),
 
-            // 👇 Immediate Notification Button (Always Visible)
             ElevatedButton(
               onPressed: () async {
                 await NotificationService().showImmediateNotification();
@@ -229,9 +258,7 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
   }
 
   Widget _buildBlockedNotificationButton(
-    double screenHeight,
-    double screenWidth,
-  ) {
+      double screenHeight, double screenWidth) {
     return Padding(
       padding: EdgeInsets.only(top: screenHeight * 0.02),
       child: ElevatedButton(
