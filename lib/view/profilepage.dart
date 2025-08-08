@@ -53,7 +53,6 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
     });
   }
 
-  // New method for the dedicated test button
   Future<void> _testScheduledNotifications() async {
     final notificationService = NotificationService();
 
@@ -65,34 +64,42 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
       if (granted) {
         await notificationService.cancelAllNotifications();
 
-        // <--- ADDED EXPLICIT LOGGING FOR TIMEZONE DEBUGGING --->
         final nowLocal = DateTime.now().toLocal();
-        final nowUtc = DateTime.now().toUtc();
         debugPrint('🌎 Current Local Time: $nowLocal');
-        debugPrint('🌍 Current UTC Time: $nowUtc');
-        // <--- END ADDED LOGGING --->
 
-        // Schedule a notification for 2 minutes from now, using the local time
-        final testTime = nowLocal.add(const Duration(minutes: 2));
+        // Schedule the first test notification for 2 minutes from now.
+        final firstTestTime = nowLocal.add(const Duration(minutes: 2));
         await notificationService.scheduleNotification(
           id: 3,
-          title: '⏰ Test Notification',
+          title: '⏰ First Test Notification',
           body: 'This should fire in 2 minutes!',
-          hour: testTime.hour,
-          minute: testTime.minute,
+          hour: firstTestTime.hour,
+          minute: firstTestTime.minute,
           scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
         );
-        debugPrint('✅ Scheduled Test Notification for ${testTime.hour}:${testTime.minute} (Local)');
+        debugPrint('✅ Scheduled First Test Notification for ${firstTestTime.hour}:${firstTestTime.minute} (Local)');
 
-        // ... (rest of your scheduling calls) ...
-        // I've removed your other scheduled calls here for clarity in debugging
+        // Schedule the second test notification for 5 minutes after the first one.
+        final secondTestTime = firstTestTime.add(const Duration(minutes: 3));
+        await notificationService.scheduleNotification(
+          id: 4,
+          title: '🌙 Night Walk Reminder',
+          body: 'Time to go for a night walk and relax!',
+          hour: secondTestTime.hour,
+          minute: secondTestTime.minute,
+          scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        );
+        debugPrint('✅ Scheduled Night Walk Notification for ${secondTestTime.hour}:${secondTestTime.minute} (Local)');
       } else {
-        // ...
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Notification permission not granted.')),
+          );
+        }
       }
     }
   }
 
-  // Simplified toggle method for the switch
   Future<void> _toggleNotifications(bool newValue) async {
     final notificationService = NotificationService();
     if (newValue) {
@@ -102,20 +109,19 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
         await _checkNotificationStatus();
 
         if (granted) {
-          // You would put the scheduling logic here in a final version,
-          // but for testing with the button, we'll keep this simple.
+          // You can add logic to re-schedule notifications here if needed
         }
       } else {
         setState(() => _notificationsEnabled = false);
       }
     } else {
       await notificationService.cancelAllNotifications();
-      showDisableNotificationDialog(context);
+      if (context.mounted) {
+        showDisableNotificationDialog(context);
+      }
     }
   }
 
-  // <--- NEW DIAGNOSTIC METHOD --->
-  // Add this to your class to check for pending notifications
   Future<void> _checkPendingNotifications() async {
     final List<PendingNotificationRequest> pending =
     await FlutterLocalNotificationsPlugin().pendingNotificationRequests();
@@ -129,7 +135,6 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
       );
     }
   }
-  // <--- END NEW DIAGNOSTIC METHOD --->
 
   @override
   Widget build(BuildContext context) {
@@ -187,13 +192,11 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
               onPressed: _testScheduledNotifications,
               child: const Text('⏰ Test Scheduled Notifications'),
             ),
-            // <--- NEW DIAGNOSTIC BUTTON --->
             SizedBox(height: screenHeight * 0.02),
             ElevatedButton(
               onPressed: _checkPendingNotifications,
               child: const Text('👀 Check Pending Notifications'),
             ),
-            // <--- END NEW DIAGNOSTIC BUTTON --->
 
             SizedBox(height: screenHeight * 0.04),
             _buildSectionTitle('General', bodyTextColor),
