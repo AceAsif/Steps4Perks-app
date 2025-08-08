@@ -81,6 +81,7 @@ dependencies:
   shimmer: ^3.0.0
   # A flutter library to show images from the internet and keep them in the cache directory.
   cached_network_image: ^3.4.1
+  flutter_timezone: ^4.1.1
 
 
 dev_dependencies:

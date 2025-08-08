@@ -13,7 +13,7 @@ android {
     namespace = "com.example.steps4perks"
 
     // Sets the compile SDK version based on Flutter's configuration
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 34
 
     // Specifies the NDK (Native Development Kit) version to use.
     // Force a specific NDK version for consistency across builds if needed.

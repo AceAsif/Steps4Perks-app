@@ -1,12 +1,17 @@
+//import 'dart:io';
 import 'dart:math' as math;
 import 'dart:developer';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz;
+import 'package:flutter_timezone/flutter_timezone.dart'; // <--- ADDED IMPORT
 
 import '../main.dart';
 
@@ -20,14 +25,16 @@ class NotificationService {
   final FirebaseMessaging _firebaseMessaging = FirebaseMessaging.instance;
 
   Future<void> initialize() async {
-    // Initialize timezone data
+    // Initialize the timezone database first
     tz.initializeTimeZones();
     debugPrint("✅ Timezones initialized");
 
-    // <--- ADDED EXPLICIT TIMEZONE SETTING --->
-    final String currentTimeZone = DateTime.now().timeZoneName;
-    tz.setLocalLocation(tz.getLocation(currentTimeZone));
-    debugPrint('🌎 Local timezone set to: $currentTimeZone');
+    // <--- ADDED EXPLICIT TIMEZONE SETTING FOR ROBUSTNESS --->
+    // Get the definitive local timezone name from the OS
+    final String timeZoneName = await FlutterTimezone.getLocalTimezone();
+    // Set the local location for the timezone package
+    tz.setLocalLocation(tz.getLocation(timeZoneName));
+    debugPrint('🌎 Local timezone set to: $timeZoneName');
     // <--- END ADDED EXPLICIT TIMEZONE SETTING --->
 
     const initSettings = InitializationSettings(
