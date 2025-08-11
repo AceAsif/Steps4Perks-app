@@ -35,14 +35,11 @@ require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelpe
 flutter_ios_podfile_setup
 
 target 'Runner' do
-  use_frameworks!
-  use_modular_headers!
+
+  # Static frameworks are Flutter/FlutterFire-friendly
+  use_frameworks! :linkage => :static
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
-  
-  # Fix gRPC certificates issue
-  pod 'gRPC-C++', :modular_headers => true
-  pod 'gRPC-Core', :modular_headers => true
 
   target 'RunnerTests' do
     inherit! :search_paths
@@ -50,21 +47,68 @@ target 'Runner' do
 end
 
 post_install do |installer|
-  installer.pods_project.targets.each do |target|
-    flutter_additional_ios_build_settings(target)
-    
-    target.build_configurations.each do |config|
-      # Exclude arm64 architecture for simulator
+  installer.pods_project.targets.each do |t|
+    flutter_additional_ios_build_settings(t)
+
+    t.build_configurations.each do |config|
+      # Keep if you need it on Apple Silicon simulators
       config.build_settings['EXCLUDED_ARCHS[sdk=iphonesimulator*]'] = 'arm64'
-      
-      # Fix gRPC certificates specifically
-      if target.name.include?('gRPC')
-        config.build_settings['HEADER_SEARCH_PATHS'] ||= ['$(inherited)']
-        config.build_settings['HEADER_SEARCH_PATHS'] << '$(PODS_TARGET_SRCROOT)'
+
+      # Use C++17 with gRPC/Abseil on Xcode 16
+      config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'gnu++17'
+
+      # Keep iOS target consistent
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
+
+      # Allow (as a safeguard) any lingering non-modular includes
+      config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+
+      # Fix for firebase_messaging non-modular header issue
+      if t.name == 'firebase_messaging'
+        config.build_settings['HEADER_SEARCH_PATHS'] = '$(inherited) $(SRCROOT)/Pods/Headers/Public/Firebase'
+        config.build_settings['CLANG_ENABLE_MODULES'] = 'YES'
       end
-      
-      # iOS deployment target consistency
-      config.build_settings.delete 'IPHONEOS_DEPLOYMENT_TARGET'
+
+      # Strip any -G* flags that break clang
+      %w[OTHER_CFLAGS OTHER_CPLUSPLUSFLAGS OTHER_SWIFT_FLAGS WARNING_CFLAGS OTHER_LDFLAGS].each do |key|
+        flags = config.build_settings[key]
+        next unless flags
+        arr = flags.is_a?(String) ? flags.split : flags
+        arr = arr.reject { |f| f.start_with?('-G') || f.include?('GCC_WARN_INHIBIT_ALL_WARNINGS') }
+        config.build_settings[key] = arr.is_a?(Array) ? arr.join(' ') : arr
+      end
     end
+
+    # Per-file flag scrub (only on native targets)
+    if t.respond_to?(:source_build_phase) && t.source_build_phase
+      t.source_build_phase.files.each do |fref|
+        s = fref.settings
+        next unless s && s['COMPILER_FLAGS']
+        arr = s['COMPILER_FLAGS'].is_a?(String) ? s['COMPILER_FLAGS'].split : s['COMPILER_FLAGS']
+        if arr
+          arr.reject! { |f| f.start_with?('-G') || f.include?('GCC_WARN_INHIBIT_ALL_WARNINGS') }
+          s['COMPILER_FLAGS'] = arr.is_a?(Array) ? arr.join(' ') : arr
+        end
+      end
+    end
+  end
+
+  # Also scrub -G* in generated xcconfigs
+  Dir[File.join(__dir__, 'Pods', 'Target Support Files', '**', '*.xcconfig')].each do |path|
+    txt = File.read(path)
+    cleaned = txt.gsub(/\s-G[^\s]*/, '')
+    File.write(path, cleaned) if cleaned != txt
+  end
+
+  # Patch gRPC promise header in BOTH pods for Clang 16 strictness
+  %w[
+    gRPC-Core/src/core/lib/promise/detail/basic_seq.h
+    gRPC-C++/src/core/lib/promise/detail/basic_seq.h
+  ].each do |rel|
+    path = File.join(__dir__, 'Pods', rel)
+    next unless File.exist?(path)
+    txt = File.read(path)
+    fixed = txt.gsub(/Traits::template\s+CallSeqFactory\(/, 'Traits::template CallSeqFactory<>(')
+    File.write(path, fixed) if fixed != txt
   end
 end
