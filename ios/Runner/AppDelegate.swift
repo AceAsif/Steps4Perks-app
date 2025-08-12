@@ -1,6 +1,6 @@
-import Flutter
+\import Flutter
 import UIKit
-// This is required for calling FlutterLocalNotificationsPlugin.setPluginRegistrantCallback method.
+import FirebaseCore // Import the FirebaseCore module
 import flutter_local_notifications
 
 @main
@@ -13,6 +13,11 @@ import flutter_local_notifications
     FlutterLocalNotificationsPlugin.setPluginRegistrantCallback { (registry) in
       GeneratedPluginRegistrant.register(with: registry)
     }
+
+    // Call FirebaseApp.configure() to initialize Firebase services.
+    // This is the solution for the [firebase_messaging/unknown] error.
+    FirebaseApp.configure()
+    
     GeneratedPluginRegistrant.register(with: self)
     if #available(iOS 10.0, *) {
       UNUserNotificationCenter.current().delegate = self as? UNUserNotificationCenterDelegate
