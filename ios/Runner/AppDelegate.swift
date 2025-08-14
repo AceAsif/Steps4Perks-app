@@ -1,4 +1,4 @@
-\import Flutter
+import Flutter
 import UIKit
 import FirebaseCore // Import the FirebaseCore module
 import flutter_local_notifications
