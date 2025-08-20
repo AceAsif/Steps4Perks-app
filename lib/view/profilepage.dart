@@ -53,51 +53,41 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
     });
   }
 
-  Future<void> _testScheduledNotifications() async {
+  /// Schedules three daily notifications for morning, lunch, and evening.
+  Future<void> _scheduleDailyNotifications() async {
     final notificationService = NotificationService();
+    // Cancel all previous notifications before scheduling new ones
+    await notificationService.cancelAllNotifications();
 
-    final acceptedRationale = await showNotificationRationaleDialog(context);
-    if (acceptedRationale == true) {
-      final granted = await notificationService.requestNotificationPermissions();
-      await _checkNotificationStatus();
+    // Schedule the morning notification
+    await notificationService.scheduleNotification(
+      id: 1,
+      title: '☀️ Morning Motivation',
+      body: 'Start your day right! Go for a short walk and earn some perks.',
+      hour: 9,
+      minute: 0,
+      scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+    );
 
-      if (granted) {
-        await notificationService.cancelAllNotifications();
+    // Schedule the lunch notification
+    await notificationService.scheduleNotification(
+      id: 2,
+      title: '🍽️ Lunchtime Steps',
+      body: 'Take a break and get a few steps in before you get back to work!',
+      hour: 13,
+      minute: 0,
+      scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+    );
 
-        final nowLocal = DateTime.now().toLocal();
-        debugPrint('🌎 Current Local Time: $nowLocal');
-
-        // Schedule the first test notification for 2 minutes from now.
-        final firstTestTime = nowLocal.add(const Duration(minutes: 2));
-        await notificationService.scheduleNotification(
-          id: 3,
-          title: '⏰ First Test Notification',
-          body: 'This should fire in 2 minutes!',
-          hour: firstTestTime.hour,
-          minute: firstTestTime.minute,
-          scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-        );
-        debugPrint('✅ Scheduled First Test Notification for ${firstTestTime.hour}:${firstTestTime.minute} (Local)');
-
-        // Schedule the second test notification for 5 minutes after the first one.
-        final secondTestTime = firstTestTime.add(const Duration(minutes: 3));
-        await notificationService.scheduleNotification(
-          id: 4,
-          title: '🌙 Night Walk Reminder',
-          body: 'Time to go for a night walk and relax!',
-          hour: secondTestTime.hour,
-          minute: secondTestTime.minute,
-          scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-        );
-        debugPrint('✅ Scheduled Night Walk Notification for ${secondTestTime.hour}:${secondTestTime.minute} (Local)');
-      } else {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Notification permission not granted.')),
-          );
-        }
-      }
-    }
+    // Schedule the evening notification
+    await notificationService.scheduleNotification(
+      id: 3,
+      title: '🌙 Night Walk Reminder',
+      body: 'Time to go for a night walk and relax!',
+      hour: 18,
+      minute: 0,
+      scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+    );
   }
 
   Future<void> _toggleNotifications(bool newValue) async {
@@ -109,30 +99,18 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
         await _checkNotificationStatus();
 
         if (granted) {
-          // You can add logic to re-schedule notifications here if needed
+          // Schedule the new notifications when permission is granted
+          await _scheduleDailyNotifications();
         }
       } else {
         setState(() => _notificationsEnabled = false);
       }
     } else {
+      // Cancel all notifications when the user turns them off
       await notificationService.cancelAllNotifications();
       if (context.mounted) {
         showDisableNotificationDialog(context);
       }
-    }
-  }
-
-  Future<void> _checkPendingNotifications() async {
-    final List<PendingNotificationRequest> pending =
-    await FlutterLocalNotificationsPlugin().pendingNotificationRequests();
-    debugPrint('⏳ Found ${pending.length} pending notifications:');
-    for (var p in pending) {
-      debugPrint('   - ID: ${p.id}, Title: ${p.title}, Body: ${p.body}, Payload: ${p.payload}');
-    }
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Found ${pending.length} pending notifications.')),
-      );
     }
   }
 
@@ -187,17 +165,6 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
             if (!_notificationsEnabled && _isPermissionPermanentlyDenied)
               _buildBlockedNotificationButton(screenHeight, screenWidth),
 
-            SizedBox(height: screenHeight * 0.02),
-            ElevatedButton(
-              onPressed: _testScheduledNotifications,
-              child: const Text('⏰ Test Scheduled Notifications'),
-            ),
-            SizedBox(height: screenHeight * 0.02),
-            ElevatedButton(
-              onPressed: _checkPendingNotifications,
-              child: const Text('👀 Check Pending Notifications'),
-            ),
-
             SizedBox(height: screenHeight * 0.04),
             _buildSectionTitle('General', bodyTextColor),
             OptionTile(icon: Icons.star, label: 'Referral Boosters', onTap: () {}),
@@ -222,21 +189,6 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
                 'Log Out',
                 style: TextStyle(fontSize: screenWidth * 0.045),
               ),
-            ),
-
-            ElevatedButton(
-              onPressed: () async {
-                await NotificationService().showImmediateNotification();
-                debugPrint('Immediate test notification sent.');
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Immediate test notification sent!'),
-                    ),
-                  );
-                }
-              },
-              child: const Text('🚀 Send Immediate Notification'),
             ),
           ],
         ),
