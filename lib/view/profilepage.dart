@@ -59,9 +59,6 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
   /// Schedules three daily notifications for morning, lunch, and evening.
   Future<void> _scheduleDailyNotifications() async {
     final notificationService = NotificationService();
-    // Cancel all previous notifications before scheduling new ones
-    await notificationService.cancelAllNotifications();
-
     // Schedule the morning notification
     await notificationService.scheduleNotification(
       id: 1,
@@ -87,7 +84,7 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
       id: 3,
       title: '🌙 Night Walk Reminder',
       body: 'Time to go for a night walk and relax!',
-      hour: 18,
+      hour: 19,
       minute: 0,
       scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
     );
@@ -96,16 +93,14 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
   Future<void> _toggleNotifications(bool newValue) async {
     final notificationService = NotificationService();
     if (newValue) {
-      final accepted = await showNotificationRationaleDialog(context);
-      if (accepted == true) {
-        final granted = await notificationService.requestNotificationPermissions();
-        await _checkNotificationStatus();
+      final granted = await notificationService.requestNotificationPermissions();
+      await _checkNotificationStatus();
 
-        if (granted) {
-          // Schedule the new notifications when permission is granted
-          await _scheduleDailyNotifications();
-        }
+      if (granted) {
+        // Schedule the new notifications when permission is granted
+        await _scheduleDailyNotifications();
       } else {
+        // If permission is not granted, reset the switch state
         setState(() => _notificationsEnabled = false);
       }
     } else {

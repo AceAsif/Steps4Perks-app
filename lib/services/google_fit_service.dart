@@ -1,5 +1,4 @@
 //TODO: Future Implementation of this code for Google Fit
-
 /*import 'package:health/health.dart';
 
 class GoogleFitService {
@@ -29,5 +28,4 @@ class GoogleFitService {
 
     return totalSteps;
   }
-}
-*/
+}*/

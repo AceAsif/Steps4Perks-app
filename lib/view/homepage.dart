@@ -5,16 +5,29 @@ import 'package:myapp/features/step_tracker.dart';
 import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:flutter/foundation.dart'; // Import kDebugMode
-import 'package:myapp/services/database_service.dart';
+//import 'package:myapp/services/database_service.dart';
 
-class HomePageContent extends StatefulWidget {
-  const HomePageContent({super.key});
+// This is the parent widget that manages the state and provides keys for the tutorial.
+class HomePage extends StatefulWidget {
+  // Use GlobalKey to identify widgets for the tutorial overlay.
+  final GlobalKey stepGaugeKey;
+  final GlobalKey dailyStreakKey;
+  final GlobalKey pointsEarnedKey;
+  final GlobalKey mockStepsKey;
+
+  const HomePage({
+    super.key,
+    required this.stepGaugeKey,
+    required this.dailyStreakKey,
+    required this.pointsEarnedKey,
+    required this.mockStepsKey,
+  });
 
   @override
-  HomePageContentState createState() => HomePageContentState();
+  HomePageState createState() => HomePageState();
 }
 
-class HomePageContentState extends State<HomePageContent> {
+class HomePageState extends State<HomePage> {
   int _oldSteps = 0; // Used for TweenAnimationBuilder's 'begin' value
   bool _isLoading = true; // Controls shimmer visibility
   bool _hasLoadedData = false; // Prevents redundant initial data loads
@@ -77,6 +90,43 @@ class HomePageContentState extends State<HomePageContent> {
     }
   }
 
+  @override
+  Widget build(BuildContext context) {
+    return HomePageContent(
+      stepGaugeKey: widget.stepGaugeKey,
+      dailyStreakKey: widget.dailyStreakKey,
+      pointsEarnedKey: widget.pointsEarnedKey,
+      mockStepsKey: widget.mockStepsKey,
+      oldSteps: _oldSteps,
+      isLoading: _isLoading,
+      loadData: _loadData,
+      parentContext: context, // Pass the context here
+    );
+  }
+}
+
+// This widget is now the content part that only handles the UI.
+class HomePageContent extends StatelessWidget {
+  final GlobalKey stepGaugeKey;
+  final GlobalKey dailyStreakKey;
+  final GlobalKey pointsEarnedKey;
+  final GlobalKey mockStepsKey;
+  final int oldSteps;
+  final bool isLoading;
+  final Future<void> Function() loadData;
+  final BuildContext parentContext; // Receive the context here
+
+  const HomePageContent({
+    super.key,
+    required this.stepGaugeKey,
+    required this.dailyStreakKey,
+    required this.pointsEarnedKey,
+    required this.mockStepsKey,
+    required this.oldSteps,
+    required this.isLoading,
+    required this.loadData,
+    required this.parentContext, // And here
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -87,11 +137,9 @@ class HomePageContentState extends State<HomePageContent> {
     return SafeArea(
       child: RefreshIndicator(
         onRefresh: () async {
-          _hasLoadedData = false;
-          setState(() => _isLoading = true);
-          await _loadData();
+          await loadData();
         },
-        child: _isLoading
+        child: isLoading
             ? _buildShimmer(screenHeight)
             : SingleChildScrollView(
           padding: EdgeInsets.symmetric(
@@ -119,14 +167,15 @@ class HomePageContentState extends State<HomePageContent> {
                     ),
                   ),
                 ),
-              _buildGauge(screenWidth, stepTracker),
-              _buildSummaryCards(stepTracker),
+              // Use the provided GlobalKey
+              _buildGauge(screenWidth, stepTracker, stepGaugeKey),
+              _buildSummaryCards(stepTracker, dailyStreakKey, pointsEarnedKey),
               const SizedBox(height: 20),
-              // Use the refactored _buildClaimButton
-              _buildClaimButton(stepTracker, screenWidth),
+              // Pass the context here
+              _buildClaimButton(stepTracker, screenWidth, parentContext),
               const SizedBox(height: 20),
               if (kDebugMode)
-                _buildEmulatorControls(context),
+                _buildEmulatorControls(context, mockStepsKey),
             ],
           ),
         ),
@@ -159,41 +208,45 @@ class HomePageContentState extends State<HomePageContent> {
     );
   }
 
-  Widget _buildGauge(double screenWidth, StepTracker tracker) {
+  // Refactored to accept key
+  Widget _buildGauge(double screenWidth, StepTracker tracker, GlobalKey key) {
     return SizedBox(
+      key: key, // Assign the key here
       width: screenWidth * 0.65,
       height: screenWidth * 0.65,
       child: TweenAnimationBuilder<double>(
         tween: Tween<double>(
-          begin: _oldSteps.toDouble(),
+          begin: oldSteps.toDouble(),
           end: tracker.currentSteps.toDouble(),
         ),
         duration: const Duration(milliseconds: 600),
         builder: (context, value, child) =>
             StepGauge(currentSteps: value.toInt()),
-        onEnd: () => _oldSteps = tracker.currentSteps,
       ),
     );
   }
 
-  Widget _buildSummaryCards(StepTracker tracker) {
+  // Refactored to accept keys
+  Widget _buildSummaryCards(StepTracker tracker, GlobalKey dailyKey, GlobalKey pointsKey) {
     return Row(
       children: [
         Expanded(
           child: _buildCard(
-              Icons.local_fire_department, 'Daily Streak', '${tracker.currentStreak}'),
+              Icons.local_fire_department, 'Daily Streak', '${tracker.currentStreak}', dailyKey),
         ),
         const SizedBox(width: 12),
         Expanded(
           child: _buildCard(Icons.monetization_on, 'Points Earned',
-              '${tracker.dailyPointsEarned} / ${StepTracker.maxDailyPoints}'),
+              '${tracker.dailyPointsEarned} / ${StepTracker.maxDailyPoints}', pointsKey),
         ),
       ],
     );
   }
 
-  Widget _buildCard(IconData icon, String label, String value) {
+  // Refactored to accept key
+  Widget _buildCard(IconData icon, String label, String value, GlobalKey key) {
     return Card(
+      key: key, // Assign the key here
       elevation: 3,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       child: Padding(
@@ -214,11 +267,8 @@ class HomePageContentState extends State<HomePageContent> {
     );
   }
 
-  // Refactored _buildClaimButton to call claimDailyBonusPoints
-  Widget _buildClaimButton(StepTracker tracker, double width) {
-    // Condition for enabling the button:
-    // 1. Daily points earned must be at or above maxDailyPoints (100)
-    // 2. The daily bonus must NOT have been claimed today
+  // Refactored _buildClaimButton to accept context as a parameter
+  Widget _buildClaimButton(StepTracker tracker, double width, BuildContext context) {
     final bool canClaim = tracker.dailyPointsEarned >= StepTracker.maxDailyPoints &&
         !tracker.hasClaimedToday;
 
@@ -228,7 +278,7 @@ class HomePageContentState extends State<HomePageContent> {
         onPressed: canClaim
             ? () async {
           await tracker.claimDailyBonusPoints();
-          if (!mounted) return; // Check if the widget is still mounted
+          if (!context.mounted) return;
           if (tracker.hasClaimedToday) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text('🎉 Claimed ${StepTracker.maxDailyPoints} Daily Points!')),
@@ -263,16 +313,16 @@ class HomePageContentState extends State<HomePageContent> {
     );
   }
 
-  Widget _buildEmulatorControls(BuildContext context) {
+  // Refactored to accept key
+  Widget _buildEmulatorControls(BuildContext context, GlobalKey key) {
+    final stepTracker = Provider.of<StepTracker>(context, listen: false);
     return Column(
       children: [
         const SizedBox(height: 10),
         ElevatedButton(
+          key: key, // Assign the key here
           onPressed: () {
-            // commen out to set reset
-            // Provider.of<StepTracker>(context, listen: false).resetMockSteps();
-            Provider.of<StepTracker>(context, listen: false)
-                .addMockSteps(1000);
+            stepTracker.addMockSteps(1000);
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Added 1000 mock steps!')),
             );
@@ -289,7 +339,7 @@ class HomePageContentState extends State<HomePageContent> {
         ),
         ElevatedButton(
           onPressed: () {
-            Provider.of<StepTracker>(context, listen: false).resetMockSteps();
+            stepTracker.resetMockSteps();
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Reset mock steps to 0!')),
             );
@@ -302,7 +352,7 @@ class HomePageContentState extends State<HomePageContent> {
             shape:
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
-          child: const Text('Reset mock steps to 0!'), // Clarified text
+          child: const Text('Reset mock steps to 0!'),
         ),
       ],
     );

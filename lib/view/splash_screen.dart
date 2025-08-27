@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:myapp/features/bottomnavigation.dart'; // Your main navigation
+import 'package:myapp/features/bottomnavigation.dart';
+import 'package:myapp/view/onboardingpage.dart';
 
 class SplashScreen extends StatefulWidget {
-  const SplashScreen({super.key});
+  // This parameter now receives the value from main.dart
+  final bool onboardingComplete;
+
+  const SplashScreen({super.key, required this.onboardingComplete});
 
   @override
   State<SplashScreen> createState() => _SplashScreenState();
@@ -16,32 +20,22 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _startAppInitialization() async {
-    // --- FIX: Ensure StepTracker's initialization is awaited here ---
-    // Access StepTracker via Provider.
-    // Its constructor calls _init() which handles permission, pedometer,
-    // and crucially, loads data from DatabaseService (Firestore).
-    //final stepTracker = Provider.of<StepTracker>(context, listen: false);
-
-    // Give StepTracker time to initialize and load data, including from Firestore.
-    // Since StepTracker's _init() is called in its constructor, and it already
-    // listens to auth changes and loads data, we just need to ensure the data
-    // has a moment to populate.
-    // A simple delay or a more explicit Future in StepTracker could be used.
-    // For now, let's assume StepTracker's internal streams will eventually
-    // populate, and we'll add a slight delay to ensure UI is ready.
-
-    // OPTIONAL: If StepTracker has a public Future for its full initialization, await it here.
-    // Example: await stepTracker.initializationComplete; // If you added such a Future
-
     // Add a minimum display time for the splash screen
-    await Future.delayed(const Duration(seconds: 3)); // Show splash for at least 3 seconds
+    await Future.delayed(const Duration(seconds: 3));
 
     // --- Navigate to the main app UI ---
     if (mounted) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const Bottomnavigation(title: 'Steps4Perks')),
-      );
+      if (widget.onboardingComplete) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const Bottomnavigation(title: 'Steps4Perks')),
+        );
+      } else {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const OnboardingPage()),
+        );
+      }
     }
   }
 
@@ -49,14 +43,14 @@ class _SplashScreenState extends State<SplashScreen> {
   Widget build(BuildContext context) {
     // Your splash screen UI
     return Scaffold(
-      backgroundColor: Theme.of(context).primaryColor, // Use your app's primary color
+      backgroundColor: Theme.of(context).primaryColor,
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             // Your App Logo
             Image.asset(
-              'assets/app_logo.png', // Make sure you have an app logo asset
+              'assets/app_logo.png',
               width: MediaQuery.of(context).size.width * 0.5,
             ),
             const SizedBox(height: 20),

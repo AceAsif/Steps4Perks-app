@@ -18,13 +18,31 @@ class Bottomnavigation extends StatefulWidget {
 class _BottomnavigationState extends State<Bottomnavigation> {
   int _selectedIndex = 0; // Tracks the currently selected tab
 
-  /// List of all pages in the app
-  static final List<Widget> _pages = [
-    const HomePageContent(),
-    const ActivityPage(),
-    const RewardsPage(),
-    const ProfilePageContent(),
-  ];
+  // Define keys for the HomePage widgets for the tutorial
+  final GlobalKey _stepGaugeKey = GlobalKey();
+  final GlobalKey _dailyStreakKey = GlobalKey();
+  final GlobalKey _pointsEarnedKey = GlobalKey();
+  final GlobalKey _mockStepsKey = GlobalKey();
+
+  // Define a list of pages. We will build them dynamically in the build method.
+  late List<Widget> _pages;
+
+  @override
+  void initState() {
+    super.initState();
+    // Initialize the pages list here to pass the keys
+    _pages = [
+      HomePage(
+        stepGaugeKey: _stepGaugeKey,
+        dailyStreakKey: _dailyStreakKey,
+        pointsEarnedKey: _pointsEarnedKey,
+        mockStepsKey: _mockStepsKey,
+      ),
+      const ActivityPage(),
+      const RewardsPage(),
+      const ProfilePageContent(),
+    ];
+  }
 
   /// Called when a tab is selected from BottomNavigationBar
   void _onItemTapped(int index) {
@@ -37,20 +55,14 @@ class _BottomnavigationState extends State<Bottomnavigation> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      extendBodyBehindAppBar: false, // ✅ Important: No overlapping under status bar
+      extendBodyBehindAppBar: false,
       body: SafeArea(
-        // ✅ Automatically avoids notch & gesture bars
         child: Column(
           children: [
-            // Show Top Bar on all tabs except Profile Page
             if (_shouldShowTopBar) const CustomTopBar(),
-
-            // Main Page Content (depends on selected tab)
             Expanded(
               child: _pages[_selectedIndex],
             ),
-
-            // Custom Bottom Navigation Bar (always floating safely)
             _buildBottomNavigationBar(context),
           ],
         ),
