@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:myapp/services/notification_service.dart';
 import 'package:myapp/widgets/profile_specific/options_tile.dart';
@@ -8,6 +7,9 @@ import 'package:myapp/widgets/profile_specific/notification_rationale_dialog.dar
 import 'package:myapp/widgets/profile_specific/disable_notification_dialog.dart';
 import 'package:myapp/widgets/profile_specific/notification_settings_dialog.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:myapp/services/database_service.dart'; // Import DatabaseService
+import 'package:myapp/widgets/loading_dialog.dart'; // Add a dialog for sync status
+import 'package:permission_handler/permission_handler.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz;
 
@@ -22,6 +24,7 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
   bool _notificationsEnabled = false;
   bool _isPermissionPermanentlyDenied = false;
   late AndroidDeviceInfo _androidInfo;
+  final DatabaseService _databaseService = DatabaseService();
 
   @override
   void initState() {
@@ -114,6 +117,37 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
     }
   }
 
+  /// Handles the manual sync button tap.
+  Future<void> _handleManualSync() async {
+    // Show a loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return const LoadingDialog(message: 'Syncing your data...');
+      },
+    );
+
+    final success = await _databaseService.manualSync();
+
+    // Dismiss the loading dialog
+    if (context.mounted) {
+      Navigator.of(context).pop();
+    }
+
+    // Show a success or failure message
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            success ? '✅ Data synced successfully!' : '❌ Sync failed. Please try again.',
+          ),
+          backgroundColor: success ? Colors.green : Colors.red,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
@@ -167,6 +201,11 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
 
             SizedBox(height: screenHeight * 0.04),
             _buildSectionTitle('General', bodyTextColor),
+            OptionTile(
+              icon: Icons.sync,
+              label: 'Sync Data',
+              onTap: _handleManualSync,
+            ),
             OptionTile(icon: Icons.star, label: 'Referral Boosters', onTap: () {}),
             OptionTile(icon: Icons.mail_outline, label: 'Contact Support', onTap: () {}),
             OptionTile(icon: Icons.info_outline, label: 'About Steps4Perks', onTap: () {}),

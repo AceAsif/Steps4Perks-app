@@ -1,7 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
-import 'package:myapp/features/step_tracker.dart'; // Keep this if StepTracker is still used directly here
+import 'package:myapp/features/step_tracker.dart';
 import 'package:intl/intl.dart';
 
 // NEW IMPORTS FOR THE REWARD MODELS
@@ -64,6 +64,43 @@ class DatabaseService {
   }
 
   // --- Core Data Operations ---
+
+  /// Manually syncs local data to Firestore. This is useful for providing a sync button
+  /// to the user for manual data saving and error recovery.
+  Future<bool> manualSync() async {
+    try {
+      debugPrint('🔄 Starting manual sync...');
+      final today = DateFormat('yyyy-MM-dd').format(DateTime.now().toLocal());
+
+      // Fetch the latest data from your local state/step tracker service.
+      final localSteps = StepTracker.instance.getTodaySteps;
+      final localDailyPoints = StepTracker.instance.getDailyPointsEarned;
+      final localStreak = StepTracker.instance.getStreak;
+      final hasClaimedBonus = StepTracker.instance.hasClaimedDailyBonus;
+
+      // Use the existing save method to push this data to Firestore.
+      await saveStatsAndPoints(
+        date: today,
+        steps: localSteps,
+        dailyPointsEarned: localDailyPoints,
+        streak: localStreak,
+        claimedDailyBonus: hasClaimedBonus,
+      );
+
+      // Also update the main user profile with the latest streak and total points
+      // from the StepTracker to ensure consistency.
+      await setUserProfileStreak(localStreak);
+
+      // Since totalPoints is managed by `claimDailyPoints` and `redeemDailyPoints`,
+      // we don't need to update it here.
+
+      debugPrint('✅ Manual sync successful!');
+      return true;
+    } catch (e) {
+      debugPrint('❌ Manual sync failed: $e');
+      return false;
+    }
+  }
 
   /// Saves or updates daily step statistics for a specific date.
   /// Data is stored under the consistent path: `users/{deviceId}/dailyStats/{date}`.
@@ -313,6 +350,8 @@ class DatabaseService {
       debugPrint('Stack Trace: $stackTrace');
     }
   }
+
+  // --- Rewards & Points Management ---
 
   // MODIFIED: addRedeemedReward to accept rewardName and pointsCost for history
   Future<void> addRedeemedReward({
