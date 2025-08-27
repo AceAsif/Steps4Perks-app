@@ -1,12 +1,17 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:myapp/services/notification_service.dart';
 import 'package:myapp/widgets/profile_specific/options_tile.dart';
 import 'package:myapp/widgets/profile_specific/notification_rationale_dialog.dart';
 import 'package:myapp/widgets/profile_specific/disable_notification_dialog.dart';
 import 'package:myapp/widgets/profile_specific/notification_settings_dialog.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:myapp/services/database_service.dart'; // Import DatabaseService
+import 'package:myapp/widgets/loading_dialog.dart'; // Add a dialog for sync status
+import 'package:permission_handler/permission_handler.dart';
+import 'package:timezone/timezone.dart' as tz;
+import 'package:timezone/data/latest.dart' as tz;
 
 class ProfilePageContent extends StatefulWidget {
   const ProfilePageContent({super.key});
@@ -19,6 +24,7 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
   bool _notificationsEnabled = false;
   bool _isPermissionPermanentlyDenied = false;
   late AndroidDeviceInfo _androidInfo;
+  final DatabaseService _databaseService = DatabaseService();
 
   @override
   void initState() {
@@ -36,12 +42,9 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
   Future<void> _checkNotificationStatus() async {
     PermissionStatus status;
     if (Platform.isAndroid) {
-      status =
-          (_androidInfo.version.sdkInt >= 33)
-              ? await Permission.notification.status
-              : PermissionStatus.granted;
-    } else if (Platform.isIOS) {
-      status = await Permission.notification.status;
+      status = (_androidInfo.version.sdkInt >= 33)
+          ? await Permission.notification.status
+          : PermissionStatus.granted;
     } else {
       status = PermissionStatus.denied;
     }
@@ -53,50 +56,95 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
     });
   }
 
+  /// Schedules three daily notifications for morning, lunch, and evening.
+  Future<void> _scheduleDailyNotifications() async {
+    final notificationService = NotificationService();
+    // Cancel all previous notifications before scheduling new ones
+    await notificationService.cancelAllNotifications();
+
+    // Schedule the morning notification
+    await notificationService.scheduleNotification(
+      id: 1,
+      title: '☀️ Morning Motivation',
+      body: 'Start your day right! Go for a short walk and earn some perks.',
+      hour: 9,
+      minute: 0,
+      scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+    );
+
+    // Schedule the lunch notification
+    await notificationService.scheduleNotification(
+      id: 2,
+      title: '🍽️ Lunchtime Steps',
+      body: 'Take a break and get a few steps in before you get back to work!',
+      hour: 13,
+      minute: 0,
+      scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+    );
+
+    // Schedule the evening notification
+    await notificationService.scheduleNotification(
+      id: 3,
+      title: '🌙 Night Walk Reminder',
+      body: 'Time to go for a night walk and relax!',
+      hour: 18,
+      minute: 0,
+      scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+    );
+  }
+
   Future<void> _toggleNotifications(bool newValue) async {
+    final notificationService = NotificationService();
     if (newValue) {
       final accepted = await showNotificationRationaleDialog(context);
       if (accepted == true) {
-        final granted =
-            await NotificationService().requestNotificationPermissions();
+        final granted = await notificationService.requestNotificationPermissions();
+        await _checkNotificationStatus();
+
         if (granted) {
-          debugPrint("✅ Notifications enabled.");
-          await _checkNotificationStatus();
-          await NotificationService().scheduleDailyReminderOnce(
-            hour: 10,
-            minute: 0,
-          );
-          await NotificationService().scheduleNotification(
-            id: 1,
-            title: '🌞 Morning Walk',
-            body: 'Start your day with a refreshing walk!',
-            hour: 7,
-            minute: 30,
-          );
-          await NotificationService().scheduleNotification(
-            id: 2,
-            title: '🍱 Lunch Walk',
-            body: 'Stretch your legs after lunch.',
-            hour: 14,
-            minute: 23,
-          );
-          await NotificationService().scheduleNotification(
-            id: 3,
-            title: '🌙 Late Night Reminder',
-            body: 'Time to reflect and prepare for tomorrow!',
-            hour: 23,
-            minute: 20,
-          );
-          debugPrint('✅ Scheduled Lunch Notification at 14:23');
-        } else {
-          debugPrint("❌ Notifications denied by system.");
-          await _checkNotificationStatus();
+          // Schedule the new notifications when permission is granted
+          await _scheduleDailyNotifications();
         }
       } else {
         setState(() => _notificationsEnabled = false);
       }
     } else {
-      showDisableNotificationDialog(context);
+      // Cancel all notifications when the user turns them off
+      await notificationService.cancelAllNotifications();
+      if (context.mounted) {
+        showDisableNotificationDialog(context);
+      }
+    }
+  }
+
+  /// Handles the manual sync button tap.
+  Future<void> _handleManualSync() async {
+    // Show a loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return const LoadingDialog(message: 'Syncing your data...');
+      },
+    );
+
+    final success = await _databaseService.manualSync();
+
+    // Dismiss the loading dialog
+    if (context.mounted) {
+      Navigator.of(context).pop();
+    }
+
+    // Show a success or failure message
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            success ? '✅ Data synced successfully!' : '❌ Sync failed. Please try again.',
+          ),
+          backgroundColor: success ? Colors.green : Colors.red,
+        ),
+      );
     }
   }
 
@@ -115,7 +163,6 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
         ),
         child: Column(
           children: [
-            // Profile Section
             CircleAvatar(
               radius: screenWidth * 0.12,
               backgroundImage: const AssetImage('assets/profile.png'),
@@ -155,23 +202,15 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
             SizedBox(height: screenHeight * 0.04),
             _buildSectionTitle('General', bodyTextColor),
             OptionTile(
-              icon: Icons.star,
-              label: 'Referral Boosters',
-              onTap: () {},
+              icon: Icons.sync,
+              label: 'Sync Data',
+              onTap: _handleManualSync,
             ),
-            OptionTile(
-              icon: Icons.mail_outline,
-              label: 'Contact Support',
-              onTap: () {},
-            ),
-            OptionTile(
-              icon: Icons.info_outline,
-              label: 'About Steps4Perks',
-              onTap: () {},
-            ),
+            OptionTile(icon: Icons.star, label: 'Referral Boosters', onTap: () {}),
+            OptionTile(icon: Icons.mail_outline, label: 'Contact Support', onTap: () {}),
+            OptionTile(icon: Icons.info_outline, label: 'About Steps4Perks', onTap: () {}),
             SizedBox(height: screenHeight * 0.025),
 
-            // Logout Button
             ElevatedButton(
               onPressed: () {},
               style: ElevatedButton.styleFrom(
@@ -189,22 +228,6 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
                 'Log Out',
                 style: TextStyle(fontSize: screenWidth * 0.045),
               ),
-            ),
-
-            // 👇 Immediate Notification Button (Always Visible)
-            ElevatedButton(
-              onPressed: () async {
-                await NotificationService().showImmediateNotification();
-                debugPrint('Immediate test notification sent.');
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Immediate test notification sent!'),
-                    ),
-                  );
-                }
-              },
-              child: const Text('🚀 Send Immediate Notification'),
             ),
           ],
         ),
@@ -229,9 +252,7 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
   }
 
   Widget _buildBlockedNotificationButton(
-    double screenHeight,
-    double screenWidth,
-  ) {
+      double screenHeight, double screenWidth) {
     return Padding(
       padding: EdgeInsets.only(top: screenHeight * 0.02),
       child: ElevatedButton(

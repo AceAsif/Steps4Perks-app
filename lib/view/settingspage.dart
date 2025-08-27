@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:myapp/services/notification_service.dart';
 
 class SettingsPage extends StatelessWidget {
@@ -27,6 +28,7 @@ class SettingsPage extends StatelessWidget {
                   body: 'Start your day with a refreshing walk!',
                   hour: 7,
                   minute: 30,
+                  scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
                 );
                 if (context.mounted) {
                   _showSnackBar(context, 'Morning reminder scheduled!');
@@ -46,6 +48,7 @@ class SettingsPage extends StatelessWidget {
                   body: 'Time for a walk after lunch!',
                   hour: 12,
                   minute: 30,
+                  scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
                 );
                 if (context.mounted) {
                   _showSnackBar(context, 'Lunch reminder scheduled!');
@@ -65,6 +68,7 @@ class SettingsPage extends StatelessWidget {
                   body: 'Finish your steps before the day ends!',
                   hour: 19,
                   minute: 0,
+                  scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
                 );
                 if (context.mounted) {
                   _showSnackBar(context, 'Evening reminder scheduled!');

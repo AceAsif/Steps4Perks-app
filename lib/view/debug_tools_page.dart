@@ -1,10 +1,13 @@
 import 'package:flutter/foundation.dart'; // For kDebugMode
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // REQUIRED for SystemUiOverlayStyle
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:myapp/services/notification_service.dart';
 import 'package:myapp/services/database_service.dart';
 import 'package:provider/provider.dart';
 import 'package:myapp/features/step_tracker.dart';
+import 'package:timezone/timezone.dart' as tz;
+import 'package:timezone/data/latest.dart' as tz;
 
 /// A dedicated page for debugging and testing various app functionalities.
 /// Only accessible when the app is running in debug mode.
@@ -18,6 +21,72 @@ class DebugToolsPage extends StatefulWidget {
 class _DebugToolsPageState extends State<DebugToolsPage> {
   String _syncTaskTime = 'N/A'; // To display time taken by synchronous task
   String _asyncTaskTime = 'N/A'; // To display time taken by asynchronous task
+
+  @override
+  void initState() {
+    super.initState();
+    // It's good practice to initialize timezone data once in the app.
+    // If it's not already done, you can do it here for testing.
+    tz.initializeTimeZones();
+  }
+
+  /// Sends a test notification immediately.
+  Future<void> _sendImmediateNotification() async {
+    await NotificationService().showImmediateNotification();
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('🚀 Immediate test notification sent!'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  /// Schedules a test notification to appear 2 minutes from the current time.
+  Future<void> _testScheduledNotifications() async {
+    await NotificationService().cancelAllNotifications();
+
+    final nowLocal = DateTime.now().toLocal();
+    final twoMinutesLater = nowLocal.add(const Duration(minutes: 2));
+
+    await NotificationService().scheduleNotification(
+      id: 3,
+      title: '⏰ Scheduled Test Notification',
+      body: 'This notification is a test and should appear in 2 minutes!',
+      hour: twoMinutesLater.hour,
+      minute: twoMinutesLater.minute,
+      scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+    );
+    debugPrint('✅ Scheduled Test Notification for ${twoMinutesLater.hour}:${twoMinutesLater.minute} (Local)');
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Test notification scheduled for ${twoMinutesLater.hour.toString().padLeft(2, '0')}:${twoMinutesLater.minute.toString().padLeft(2, '0')}.',
+          ),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
+  /// Checks and logs all currently pending notifications.
+  Future<void> _checkPendingNotifications() async {
+    final List<PendingNotificationRequest> pending =
+    await FlutterLocalNotificationsPlugin().pendingNotificationRequests();
+    debugPrint('⏳ Found ${pending.length} pending notifications:');
+    for (var p in pending) {
+      debugPrint('   - ID: ${p.id}, Title: ${p.title}, Body: ${p.body}, Payload: ${p.payload}');
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('👀 Found ${pending.length} pending notifications.')),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -62,56 +131,33 @@ class _DebugToolsPageState extends State<DebugToolsPage> {
             _buildSectionTitle('Notification Testing'),
             const SizedBox(height: 20),
             ElevatedButton(
-              onPressed: () async {
-                final now = DateTime.now();
-                final testMinute = (now.minute + 1) % 60;
-                final nextHour = now.hour + (now.minute + 1) ~/ 60;
-
-                await NotificationService().scheduleNotification(
-                  id: 999,
-                  title: '🔔 Debug Test Notification',
-                  body: 'This is a debug-mode-only test notification.',
-                  hour: nextHour,
-                  minute: testMinute,
-                );
-
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        'Test notification scheduled at ${nextHour.toString().padLeft(2, '0')}:${testMinute.toString().padLeft(2, '0')}',
-                      ),
-                      duration: const Duration(seconds: 3),
-                    ),
-                  );
-                }
-              },
+              onPressed: _sendImmediateNotification,
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.deepPurple,
+                backgroundColor: Colors.blue,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 15),
               ),
-              child: const Text('📢 Schedule Test Notification (in 1 min)'),
+              child: const Text('🚀 Send Immediate Notification'),
             ),
             const SizedBox(height: 10),
             ElevatedButton(
-              onPressed: () async {
-                await NotificationService().resetDailyReminderFlag();
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Daily Reminder Flag Reset'),
-                      duration: Duration(seconds: 2),
-                    ),
-                  );
-                }
-              },
+              onPressed: _testScheduledNotifications,
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.orange,
+                backgroundColor: Colors.purple,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 15),
               ),
-              child: const Text('🔄 Reset Daily Reminder Flag'),
+              child: const Text('⏰ Test Scheduled Notifications (in 2 min)'),
+            ),
+            const SizedBox(height: 10),
+            ElevatedButton(
+              onPressed: _checkPendingNotifications,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 15),
+              ),
+              child: const Text('👀 Check Pending Notifications'),
             ),
 
             const SizedBox(height: 40),
