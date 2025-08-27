@@ -55,20 +55,57 @@ class _OnboardingPageState extends State<OnboardingPage> {
                 image: Icons.directions_walk,
               ),
               OnboardingScreen(
-                title: 'Track Your Steps',
-                description: 'Easily track your daily steps with your phone.',
-                image: Icons.run_circle_outlined,
+                title: 'Walk daily to earn rewards',
+                description: 'Earn points for every step and redeem them for amazing perks.',
+                image: Icons.card_giftcard,
               ),
-              NotificationOnboardingScreen(), // New screen to handle notifications
+              NotificationOnboardingScreen(),
             ],
           ),
           Align(
             alignment: Alignment.bottomCenter,
             child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 40.0),
+              padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 40),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(3, (index) => _buildPageIndicator(index)),
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  if (_currentPage < 2) // Only show the 'Next' button on the first two pages
+                    const SizedBox(width: 80), // Placeholder to balance the Next button
+                  if (_currentPage == 2)
+                    const SizedBox(width: 80), // Placeholder to balance the Next button
+
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(3, (index) => _buildPageIndicator(index)),
+                  ),
+                  if (_currentPage < 2)
+                    TextButton(
+                      onPressed: () {
+                        _pageController.nextPage(
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.ease,
+                        );
+                      },
+                      child: Text(
+                        'Next',
+                        style: TextStyle(
+                          fontSize: 18,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                    ),
+                  if (_currentPage == 2)
+                    TextButton(
+                      onPressed: _onDone,
+                      child: Text(
+                        'Done',
+                        style: TextStyle(
+                          fontSize: 18,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
           ),
@@ -131,22 +168,18 @@ class OnboardingScreen extends StatelessWidget {
   }
 }
 
-// New widget for the notification prompt
 class NotificationOnboardingScreen extends StatelessWidget {
   const NotificationOnboardingScreen({super.key});
 
-  // Schedules the daily notifications
   Future<void> _scheduleDailyNotifications() async {
     final notificationService = NotificationService();
-    // Cancel all previous notifications before scheduling new ones
-    await notificationService.cancelAllNotifications();
     await notificationService.scheduleNotification(
       id: 1,
       title: '☀️ Morning Motivation',
       body: 'Start your day right! Go for a short walk and earn some perks.',
       hour: 9,
       minute: 0,
-      scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle, // ADDED
+      scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
     );
     await notificationService.scheduleNotification(
       id: 2,
@@ -154,7 +187,7 @@ class NotificationOnboardingScreen extends StatelessWidget {
       body: 'Take a break and get a few steps in before you get back to work!',
       hour: 13,
       minute: 0,
-      scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle, // ADDED
+      scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
     );
     await notificationService.scheduleNotification(
       id: 3,
@@ -162,11 +195,10 @@ class NotificationOnboardingScreen extends StatelessWidget {
       body: 'Time to go for a night walk and relax!',
       hour: 18,
       minute: 0,
-      scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle, // ADDED
+      scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
     );
   }
 
-  // Handles the user's choice to enable or skip notifications
   void _onContinue(BuildContext context, bool enableNotifications) async {
     if (enableNotifications) {
       final granted = await NotificationService().requestNotificationPermissions();
