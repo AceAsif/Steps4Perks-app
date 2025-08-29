@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:myapp/features/step_tracker.dart';
-import 'package:myapp/view/debug_tools_page.dart'; // ✅ Import Debug Tools Page
+import 'package:myapp/view/debug_tools_page.dart';
+import 'package:myapp/services/database_service.dart'; // ✅ import
 
 class CustomTopBar extends StatefulWidget {
   const CustomTopBar({super.key});
@@ -12,6 +13,20 @@ class CustomTopBar extends StatefulWidget {
 
 class _CustomTopBarState extends State<CustomTopBar> {
   int _tapCount = 0; // ✅ Tap counter for hidden access
+  String _name = "Asif"; // ✅ default name
+
+  @override
+  void initState() {
+    super.initState();
+    _loadName();
+  }
+
+  Future<void> _loadName() async {
+    final profile = await DatabaseService().getUserProfile();
+    if (mounted && profile != null && profile['name'] != null) {
+      setState(() => _name = profile['name']);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -31,12 +46,12 @@ class _CustomTopBarState extends State<CustomTopBar> {
             },
           ),
 
-          // Centered Title
-          const Expanded(
+          // Centered Title with dynamic name
+          Expanded(
             child: Center(
               child: Text(
-                'Hello Asif',
-                style: TextStyle(
+                'Hello $_name',
+                style: const TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
                   color: Colors.black87,
@@ -54,7 +69,6 @@ class _CustomTopBarState extends State<CustomTopBar> {
                 Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const DebugToolsPage()),
                 );
-                // ✅ Snackbar after entering Debug Tools
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('🐞 Debug Tools Unlocked')),
                 );

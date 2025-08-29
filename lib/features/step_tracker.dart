@@ -35,7 +35,6 @@ class StepTracker with ChangeNotifier {
   static const int maxDailyPoints = 100;
   static const int dailyRedemptionCap = 2500;
   static const int streakStepTarget = 10000;
-  static const String _kStreakCreditedFor = 'streakCreditedFor';
 
   // --- Internal State Variables ---
   int _rawSensorSteps = 0;
@@ -173,43 +172,15 @@ class StepTracker with ChangeNotifier {
       await prefs.setInt('dailyStepBaseline', 0);
       await prefs.remove('lastRecordedRawSensorSteps');
 
-      final yesterday = _yesterdayStr();
-      final creditedFor = prefs.getString(_kStreakCreditedFor);
-      final metYesterdayLocally = (creditedFor == yesterday);
-      bool metYesterday = metYesterdayLocally;
-
-      if (!metYesterdayLocally) {
-        int yesterdaySteps = 0;
-        try {
-          final yDoc = await _databaseService.getDailyStatsOnce(yesterday);
-          if (yDoc != null) {
-            final s = yDoc['steps'];
-            if (s is int) {
-              yesterdaySteps = s;
-            } else if (s is double) {
-              yesterdaySteps = s.toInt();
-            }
-          }
-        } catch (_) {}
-        metYesterday = yesterdaySteps >= streakStepTarget;
-      }
-
-      if (!metYesterday) {
-        _currentStreak = 0;
-        await _databaseService.setUserProfileStreak(_currentStreak);
-        await prefs.setInt('currentStreak', _currentStreak);
-        debugPrint('❌ Yesterday missed → streak reset to 0');
-      } else {
-        _currentStreak = await _databaseService.getUserProfileStreak();
-        if (_currentStreak == 0) {
-          _currentStreak = prefs.getInt('currentStreak') ?? 0;
-        }
-        await prefs.setInt('currentStreak', _currentStreak);
-        debugPrint('✅ Yesterday met → keep streak at $_currentStreak');
-      }
+      // Delegate streak new-day evaluation to StreakManager
+      _currentStreak = await StreakManager.evaluateForNewDay(
+        today: today,
+        prefs: prefs,
+        db: _databaseService,
+        streakTarget: streakStepTarget,
+      );
 
       await prefs.setString('lastResetDate', today);
-      await prefs.remove(_kStreakCreditedFor);
       setClaimedToday(false);
     } else {
       _dailySteps = prefs.getInt('dailySteps') ?? 0;
@@ -295,43 +266,14 @@ class StepTracker with ChangeNotifier {
       await prefs.setString('lastResetDate', today);
       await prefs.remove('lastRecordedRawSensorSteps');
 
-      final yesterday = _yesterdayStr();
-      final creditedFor = prefs.getString(_kStreakCreditedFor);
-      final metYesterdayLocally = (creditedFor == yesterday);
-      bool metYesterday = metYesterdayLocally;
+      // Delegate streak new-day evaluation
+      _currentStreak = await StreakManager.evaluateForNewDay(
+        today: today,
+        prefs: prefs,
+        db: _databaseService,
+        streakTarget: streakStepTarget,
+      );
 
-      if (!metYesterdayLocally) {
-        int yesterdaySteps = 0;
-        try {
-          final yDoc = await _databaseService.getDailyStatsOnce(yesterday);
-          if (yDoc != null) {
-            final s = yDoc['steps'];
-            if (s is int) {
-              yesterdaySteps = s;
-            } else if (s is double) {
-              yesterdaySteps = s.toInt();
-            }
-          }
-        } catch (_) {}
-        metYesterday = yesterdaySteps >= streakStepTarget;
-      }
-
-      if (!metYesterday) {
-        _currentStreak = 0;
-        await _databaseService.setUserProfileStreak(_currentStreak);
-        await prefs.setInt('currentStreak', _currentStreak);
-        await _persistTodayStats(date: today, prefs: prefs);
-        debugPrint('❌ Yesterday missed → streak reset to 0');
-      } else {
-        _currentStreak = await _databaseService.getUserProfileStreak();
-        if (_currentStreak == 0) {
-          _currentStreak = prefs.getInt('currentStreak') ?? 0;
-        }
-        await prefs.setInt('currentStreak', _currentStreak);
-        debugPrint('✅ Yesterday met → keep streak at $_currentStreak');
-      }
-
-      await prefs.remove(_kStreakCreditedFor);
       setClaimedToday(false);
       await _checkIfClaimedToday(today);
     } else {
@@ -376,21 +318,18 @@ class StepTracker with ChangeNotifier {
       await prefs.setInt('lastRecordedRawSensorSteps', cumulativeStepsFromSensor);
       _safeNotifyListeners();
 
-      debugPrint('🎯 Immediate streak check: steps=$_dailySteps, target=$streakStepTarget, creditedFor=${prefs.getString(_kStreakCreditedFor)}');
-      if (_dailySteps >= streakStepTarget) {
-        final creditedForToday = prefs.getString(_kStreakCreditedFor);
-        if (creditedForToday != today) {
-          _currentStreak = _currentStreak + 1;
-          await prefs.setInt('currentStreak', _currentStreak);
-          await prefs.setString(_kStreakCreditedFor, today);
-
-          await _databaseService.setUserProfileStreak(_currentStreak);
-          await _persistTodayStats(date: today, prefs: prefs);
-
-          _safeNotifyListeners();
-          debugPrint('🔥 Daily streak credited immediately for $today → streak = $_currentStreak');
-        }
-      }
+      // Delegate “credit today if target met” to StreakManager
+      _currentStreak = await StreakManager.tryCreditTodayIfTargetMet(
+        todaySteps: _dailySteps,
+        dailyPointsEarned: dailyPointsEarned,
+        hasClaimedBonus: _hasClaimedToday,
+        today: today,
+        currentStreak: _currentStreak,
+        prefs: prefs,
+        db: _databaseService,
+        streakTarget: streakStepTarget,
+      );
+      _safeNotifyListeners();
     } else {
       debugPrint('🚫 [Sensor] No significant new steps for UI update. Calculated: $calculatedDailySteps, Current: $_dailySteps');
     }
@@ -576,29 +515,23 @@ class StepTracker with ChangeNotifier {
         debugPrint('💰 [Mock] Gained ${newPointsEarned - oldPointsEarned} points. Total points: $_totalPoints');
       }
 
-      await SharedPreferences.getInstance().then((prefs) {
-        prefs.setInt('dailySteps', _dailySteps);
-      });
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('dailySteps', _dailySteps);
 
-      _safeNotifyListeners();
+      // Delegate crediting to StreakManager
+      final today = _todayStr();
+      _currentStreak = await StreakManager.tryCreditTodayIfTargetMet(
+        todaySteps: _dailySteps,
+        dailyPointsEarned: dailyPointsEarned,
+        hasClaimedBonus: _hasClaimedToday,
+        today: today,
+        currentStreak: _currentStreak,
+        prefs: prefs,
+        db: _databaseService,
+        streakTarget: streakStepTarget,
+      );
 
-      final prefs2 = await SharedPreferences.getInstance();
-      final today2 = _todayStr();
-      final creditedFor2 = prefs2.getString(_kStreakCreditedFor);
-
-      if (_dailySteps >= streakStepTarget && creditedFor2 != today2) {
-        _currentStreak = _currentStreak + 1;
-        await prefs2.setInt('currentStreak', _currentStreak);
-        await prefs2.setString(_kStreakCreditedFor, today2);
-
-        await _databaseService.setUserProfileStreak(_currentStreak);
-        await _persistTodayStats(date: today2, prefs: prefs2);
-
-        _safeNotifyListeners();
-        debugPrint('🔥 [Mock] Daily streak credited immediately for $today2 → streak = $_currentStreak');
-      }
-
-      final today = DateFormat('yyyy-MM-dd').format(DateTime.now().toLocal());
+      // Optionally sync to DB for verification (kept)
       try {
         await _databaseService.saveStatsAndPoints(
           date: today,
@@ -613,6 +546,8 @@ class StepTracker with ChangeNotifier {
         debugPrint('❌ [Mock] Failed to sync mock steps to database: $e');
         debugPrint('Stack Trace: $stackTrace');
       }
+
+      _safeNotifyListeners();
     } else {
       debugPrint('🚫 Mock steps are only allowed in debug mode. Current mode: ${kReleaseMode ? "Release" : "Profile"}');
     }

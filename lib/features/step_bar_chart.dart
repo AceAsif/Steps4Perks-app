@@ -33,7 +33,7 @@ class _StepsBarChartState extends State<StepsBarChart> {
   }
 
   bool get isWeekly => widget.labels.any((label) =>
-      label.toLowerCase().contains('mon') ||
+  label.toLowerCase().contains('mon') ||
       label.toLowerCase().contains('tue') ||
       label.toLowerCase().contains('wed') ||
       label.toLowerCase().contains('thu') ||
@@ -151,7 +151,10 @@ class _StepsBarChartState extends State<StepsBarChart> {
                   borderData: FlBorderData(show: false),
                   barGroups: List.generate(widget.stepValues.length, (index) {
                     final value = widget.stepValues[index];
-                    const double stepGoal = 10000.0;
+
+                    // ✅ Minimal change: use a weekly aggregate goal for monthly bars.
+                    // Weekly view goal stays 10,000; Monthly bars (Week 1..5) use 70,000.
+                    final double stepGoal = isWeekly ? 10000.0 : 70000.0;
 
                     final rodStackItems = <BarChartRodStackItem>[
                       if (value <= stepGoal)
@@ -188,11 +191,11 @@ class _StepsBarChartState extends State<StepsBarChart> {
           Text(
             widget.maxSteps > 0
                 ? (isWeekly
-                    ? 'Most Steps in a Day: ${widget.maxSteps}'
-                    : 'Most Steps in a Week: ${widget.maxSteps}')
+                ? 'Most Steps in a Day: ${widget.maxSteps}'
+                : 'Most Steps in a Week: ${widget.maxSteps}')
                 : (isWeekly
-                    ? 'Most Steps in a Day: No steps recorded yet'
-                    : 'Most Steps in a Week: No steps recorded yet'),
+                ? 'Most Steps in a Day: No steps recorded yet'
+                : 'Most Steps in a Week: No steps recorded yet'),
             style: const TextStyle(fontSize: 14),
           ),
           if (widget.maxStepsDate.trim().isNotEmpty)

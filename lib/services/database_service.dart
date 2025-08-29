@@ -12,6 +12,10 @@ class DatabaseService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   String? _cachedDeviceId;
 
+  // ✅ NEW: public getter so callers can access users collection when needed
+  CollectionReference<Map<String, dynamic>> get usersCollection =>
+      _firestore.collection('users');
+
   // --- Device ID Management ---
   /// Retrieves a unique device ID. Caches it for subsequent calls.
   /// Provides unique fallbacks for non-physical devices/emulators.
@@ -500,6 +504,45 @@ class DatabaseService {
     } catch (e) {
       debugPrint('Error fetching available rewards: $e');
       return [];
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // ✅ NEW: User profile helpers (minimal additions, no breaking changes)
+  // ---------------------------------------------------------------------------
+
+  /// Get the current device's user profile document data (if it exists).
+  Future<Map<String, dynamic>?> getUserProfile() async {
+    try {
+      final deviceId = await getDeviceId();
+      final snap = await usersCollection.doc(deviceId).get();
+      return snap.data();
+    } catch (e) {
+      debugPrint('❌ getUserProfile error: $e');
+      return null;
+    }
+  }
+
+  /// Update parts of the user profile (e.g., name). Pass only fields to change.
+  Future<void> updateUserProfile({
+    String? name,
+    String? photoUrl, // kept for future use; ignored if null
+    // email intentionally omitted for now (read-only)
+  }) async {
+    final deviceId = await getDeviceId();
+    final Map<String, dynamic> update = {};
+    if (name != null) update['name'] = name;
+    if (photoUrl != null) update['photoUrl'] = photoUrl;
+
+    if (update.isEmpty) return;
+
+    try {
+      await usersCollection.doc(deviceId).set(update, SetOptions(merge: true));
+      debugPrint('✅ updateUserProfile → $update');
+    } catch (e, st) {
+      debugPrint('❌ updateUserProfile failed: $e');
+      debugPrint('Stack Trace: $st');
+      rethrow;
     }
   }
 }

@@ -26,10 +26,14 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
   late AndroidDeviceInfo _androidInfo;
   final DatabaseService _databaseService = DatabaseService();
 
+  String _name = "Asif"; // default
+  String _email = "asif@gmail.com"; // fixed, non-editable
+
   @override
   void initState() {
     super.initState();
     _initializeAndCheckPermissions();
+    _loadProfile(); // ✅ uses DatabaseService helper
   }
 
   Future<void> _initializeAndCheckPermissions() async {
@@ -56,10 +60,55 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
     });
   }
 
+  Future<void> _loadProfile() async {
+    final data = await _databaseService.getUserProfile();
+    if (data != null) {
+      setState(() {
+        _name = data['name'] ?? _name;
+        _email = data['email'] ?? _email; // still read-only in UI
+      });
+    }
+  }
+
+  Future<void> _editName() async {
+    final controller = TextEditingController(text: _name);
+
+    final newName = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Edit Name"),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(labelText: "Enter your name"),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(null),
+            child: const Text("Cancel"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
+            child: const Text("Save"),
+          ),
+        ],
+      ),
+    );
+
+    if (newName != null && newName.isNotEmpty) {
+      await _databaseService.updateUserProfile(name: newName); // ✅ helper
+      setState(() => _name = newName);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("✅ Name updated successfully!")),
+        );
+      }
+    }
+  }
+
   /// Schedules three daily notifications for morning, lunch, and evening.
   Future<void> _scheduleDailyNotifications() async {
     final notificationService = NotificationService();
-    // Schedule the morning notification
     await notificationService.scheduleNotification(
       id: 1,
       title: '☀️ Morning Motivation',
@@ -68,8 +117,6 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
       minute: 0,
       scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
     );
-
-    // Schedule the lunch notification
     await notificationService.scheduleNotification(
       id: 2,
       title: '🍽️ Lunchtime Steps',
@@ -78,8 +125,6 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
       minute: 0,
       scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
     );
-
-    // Schedule the evening notification
     await notificationService.scheduleNotification(
       id: 3,
       title: '🌙 Night Walk Reminder',
@@ -97,14 +142,11 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
       await _checkNotificationStatus();
 
       if (granted) {
-        // Schedule the new notifications when permission is granted
         await _scheduleDailyNotifications();
       } else {
-        // If permission is not granted, reset the switch state
         setState(() => _notificationsEnabled = false);
       }
     } else {
-      // Cancel all notifications when the user turns them off
       await notificationService.cancelAllNotifications();
       if (context.mounted) {
         showDisableNotificationDialog(context);
@@ -112,9 +154,7 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
     }
   }
 
-  /// Handles the manual sync button tap.
   Future<void> _handleManualSync() async {
-    // Show a loading dialog
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -125,12 +165,10 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
 
     final success = await _databaseService.manualSync();
 
-    // Dismiss the loading dialog
     if (context.mounted) {
       Navigator.of(context).pop();
     }
 
-    // Show a success or failure message
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -163,16 +201,29 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
               backgroundImage: const AssetImage('assets/profile.png'),
             ),
             SizedBox(height: screenHeight * 0.02),
-            Text(
-              'Asif',
-              style: TextStyle(
-                fontSize: screenWidth * 0.06,
-                fontWeight: FontWeight.bold,
-                color: bodyTextColor,
-              ),
+
+            // Editable Name
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  _name,
+                  style: TextStyle(
+                    fontSize: screenWidth * 0.06,
+                    fontWeight: FontWeight.bold,
+                    color: bodyTextColor,
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.edit, size: 20),
+                  onPressed: _editName,
+                ),
+              ],
             ),
+
+            // Email (Read-only)
             Text(
-              'asif@gmail.com',
+              _email,
               style: TextStyle(
                 fontSize: screenWidth * 0.045,
                 color: subtitleColor,

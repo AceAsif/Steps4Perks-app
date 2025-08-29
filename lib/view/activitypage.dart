@@ -87,10 +87,13 @@ class _ActivityPageState extends State<ActivityPage> {
     });
 
     try {
+      // Get **daily** data for the current month
       final data = await _databaseService.getMonthlyStepData();
+
       final now = DateTime.now();
       final startOfMonth = DateTime(now.year, now.month, 1);
 
+      // Week buckets (some months show Week 5 depending on day spread)
       Map<String, int> weekData = {
         'Week 1': 0,
         'Week 2': 0,
@@ -99,29 +102,40 @@ class _ActivityPageState extends State<ActivityPage> {
         'Week 5': 0,
       };
 
-      int maxSteps = 0;
-      String maxStepsDateFormatted = '';
-
+      // Accumulate each day into its week-of-month bucket
       for (int i = 0; i < 31; i++) {
         final date = startOfMonth.add(Duration(days: i));
         if (date.month != now.month) break;
 
+        // Week-of-month index: 0..4
         final weekOfMonth = ((date.day - 1) / 7).floor();
         final label = 'Week ${weekOfMonth + 1}';
 
-        final steps = data[DateFormat('d MMM').format(date)] ?? 0;
-        weekData[label] = ((weekData[label] ?? 0) + steps).toInt();
+        final dayLabel = DateFormat('d MMM').format(date); // must match DB service
+        final steps = data[dayLabel] ?? 0;
 
-        if (steps > maxSteps) {
-          maxSteps = steps;
-          maxStepsDateFormatted = DateFormat('d MMM yyyy').format(date);
-        }
+        weekData[label] = (weekData[label] ?? 0) + steps;
       }
+
+      // Remove Week 5 if unused (keep minimal visual noise)
+      if ((weekData['Week 5'] ?? 0) == 0) {
+        weekData.remove('Week 5');
+      }
+
+      // Personal record for monthly view = max weekly total
+      int maxSteps = 0;
+      String maxStepsWeek = '';
+      weekData.forEach((label, total) {
+        if (total > maxSteps) {
+          maxSteps = total;
+          maxStepsWeek = label;
+        }
+      });
 
       setState(() {
         _monthlyData = weekData;
         _maxSteps = maxSteps;
-        _maxStepsDate = maxStepsDateFormatted;
+        _maxStepsDate = maxStepsWeek; // displayed as "Week X" in chart footer
         _isLoading = false;
         _lastUpdated = DateTime.now();
       });

@@ -73,6 +73,8 @@ dependencies:
   # These are the Firebase database plugins
   firebase_core: ^2.24.0
   firebase_auth: ^4.14.0
+  firebase_storage: ^11.6.5
+  image_picker: ^1.1.2
   cloud_firestore: ^4.13.1
   firebase_messaging: ^14.7.4
   # This plugin enables Flutter applications to display ads from Google AdMob.
