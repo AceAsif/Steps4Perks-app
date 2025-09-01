@@ -396,6 +396,36 @@ class DatabaseService {
     }
   }
 
+  // Set user's current streak on the main user profile doc
+  Future<void> setUserProfileStreak(int streak) async {
+    final deviceId = await getDeviceId();
+    final userRef = _firestore.collection('users').doc(deviceId);
+    try {
+      await userRef.set({
+        'currentStreak': streak,
+        'streakUpdatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      debugPrint('✅ setUserProfileStreak → $streak');
+    } catch (e, stack) {
+      debugPrint('❌ setUserProfileStreak failed: $e');
+      debugPrint('Stack Trace: $stack');
+      rethrow;
+    }
+  }
+
+  // Get user's current streak from the main user profile doc
+  Future<int> getUserProfileStreak() async {
+    final deviceId = await getDeviceId();
+    final userRef = _firestore.collection('users').doc(deviceId);
+    try {
+      final snap = await userRef.get();
+      return snap.data()?['currentStreak'] as int? ?? 0;
+    } catch (e) {
+      debugPrint('❌ getUserProfileStreak error: $e');
+      return 0;
+    }
+  }
+
   // MODIFIED: fetchRedeemedRewards to return List<RedeemedRewardHistoryItem>
   Future<List<RedeemedRewardHistoryItem>> fetchRedeemedRewards(String deviceId) async {
     try {

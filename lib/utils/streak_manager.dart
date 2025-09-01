@@ -3,43 +3,55 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart';
 
 class StreakManager {
-  static const int dailyStepGoal = 3000;
+  static const int defaultStreakTarget = 10000; // 10k steps
+  static const String _kLastEvaluatedFor = 'streak_last_evaluated_for';
+  static const String _kCurrentStreak = 'currentStreak';
 
-  Future<int> evaluate(String today, SharedPreferences prefs, int stepsToday) async {
-    final lastGoalDate = prefs.getString('lastStepGoalDate') ?? '';
-    int streak = prefs.getInt('currentStreak') ?? 0;
+  /// Idempotently evaluates the streak for [todayDate] (yyyy-MM-dd, local time)
+  /// based on **yesterday's** finalized step count.
+  ///
+  /// - If already evaluated for [todayDate], returns the stored streak.
+  /// - If [yesterdaySteps] >= [streakTarget], increments the previous streak.
+  /// - Otherwise, resets the streak to 0.
+  Future<int> evaluate(
+      String todayDate,
+      SharedPreferences prefs,
+      int yesterdaySteps, {
+        int streakTarget = defaultStreakTarget,
+      }) async {
+    final lastEvaluatedFor = prefs.getString(_kLastEvaluatedFor);
 
-    final yesterday = DateFormat('yyyy-MM-dd')
-        .format(DateTime.now().subtract(const Duration(days: 1)));
-
-    debugPrint('📊 Evaluating streak...');
-    debugPrint('Today: $today');
-    debugPrint('Steps today: $stepsToday');
-    debugPrint('Last goal date: $lastGoalDate');
-    debugPrint('Current streak: $streak');
-
-    // ✅ 1. Today’s goal met and not already counted
-    if (stepsToday >= dailyStepGoal && lastGoalDate != today) {
-      if (lastGoalDate == yesterday) {
-        streak += 1; // Continue streak
-      } else {
-        streak = 1; // Start new streak
+    // If we've already evaluated streak for today, return existing value.
+    if (lastEvaluatedFor == todayDate) {
+      final cached = prefs.getInt(_kCurrentStreak) ?? 0;
+      if (kDebugMode) {
+        debugPrint('📊 StreakManager: already evaluated for $todayDate → $cached');
       }
-
-      await prefs.setInt('currentStreak', streak);
-      await prefs.setString('lastStepGoalDate', today);
-
-      debugPrint('✅ Streak updated: $streak');
+      return cached;
     }
 
-    // ❗️ 2. Check if streak needs resetting (missed goal yesterday)
-    if (lastGoalDate != yesterday && lastGoalDate != today) {
-      // Missed yesterday's goal
-      streak = 0;
-      await prefs.setInt('currentStreak', streak);
-      debugPrint('❌ Streak reset: goal not met yesterday ($yesterday)');
+    final prevStreak = prefs.getInt(_kCurrentStreak) ?? 0;
+    final metYesterday = yesterdaySteps >= streakTarget;
+
+    final newStreak = metYesterday ? (prevStreak + 1) : 0;
+
+    await prefs.setInt(_kCurrentStreak, newStreak);
+    await prefs.setString(_kLastEvaluatedFor, todayDate);
+
+    if (kDebugMode) {
+      final y = DateFormat('yyyy-MM-dd')
+          .format(DateTime.now().toLocal().subtract(const Duration(days: 1)));
+      debugPrint('📊 StreakManager evaluate()');
+      debugPrint('  Today: $todayDate  | Yesterday: $y');
+      debugPrint('  Yesterday steps: $yesterdaySteps  (target: $streakTarget)');
+      debugPrint('  Prev streak: $prevStreak → New streak: $newStreak');
     }
 
-    return streak;
+    return newStreak;
+  }
+
+  /// Pure utility for unit tests.
+  static int computeNextStreak(int prevStreak, bool metYesterday) {
+    return metYesterday ? (prevStreak + 1) : 0;
   }
 }

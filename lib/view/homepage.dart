@@ -49,7 +49,11 @@ class HomePageContentState extends State<HomePageContent> {
       if (data != null) {
         debugPrint("👣 Steps: ${data['steps']}, 🔥 Streak: ${data['streak']}, 🎯 Daily Points: ${data['dailyPointsEarned']}");
         stepTracker.setCurrentSteps(data['steps'] ?? 0);
-        stepTracker.setCurrentStreak(data['streak'] ?? 0);
+        final int streakFromDb = (data['streak'] as int?) ?? 0;
+        // Prefer the larger of provider (live) and DB, so we don't clobber the immediate increment
+        if (streakFromDb > stepTracker.currentStreak) {
+          stepTracker.setCurrentStreak(streakFromDb);
+        }
         // Ensure that hasClaimedToday reflects the 'claimedDailyBonus' field from Firestore
         // (You've updated database_service.dart to use 'claimedDailyBonus')
         stepTracker.setClaimedToday(data['claimedDailyBonus'] == true);
