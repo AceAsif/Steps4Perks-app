@@ -3,6 +3,8 @@ import 'package:myapp/features/step_bar_chart.dart';
 import 'package:myapp/services/database_service.dart';
 import 'package:intl/intl.dart';
 import 'package:myapp/widgets/shimmer_loader.dart';
+import 'package:provider/provider.dart';
+import 'package:myapp/features/step_tracker.dart';
 
 class ActivityPage extends StatefulWidget {
   const ActivityPage({super.key});
@@ -24,10 +26,37 @@ class _ActivityPageState extends State<ActivityPage> {
   DateTime? _lastUpdated;
   bool _hasError = false;
 
+  VoidCallback? _trackerListener; // ✅ listen for live updates
+
   @override
   void initState() {
     super.initState();
     _fetchWeeklyData(showSnackbar: false);
+
+    // ✅ Add StepTracker listener after first frame to avoid context issues
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final tracker = Provider.of<StepTracker>(context, listen: false);
+      _trackerListener = () {
+        // Refresh the visible tab when steps change
+        if (!mounted) return;
+        if (selectedTabIndex == 0) {
+          _fetchWeeklyData(showSnackbar: false);
+        } else {
+          _fetchMonthlyData();
+        }
+      };
+      tracker.addListener(_trackerListener!);
+    });
+  }
+
+  @override
+  void dispose() {
+    // ✅ Clean up listener
+    if (_trackerListener != null) {
+      final tracker = Provider.of<StepTracker>(context, listen: false);
+      tracker.removeListener(_trackerListener!);
+    }
+    super.dispose();
   }
 
   Future<void> _fetchWeeklyData({bool showSnackbar = true}) async {
@@ -87,55 +116,23 @@ class _ActivityPageState extends State<ActivityPage> {
     });
 
     try {
-      // Get **daily** data for the current month
-      final data = await _databaseService.getMonthlyStepData();
+      // ✅ Use server-side week-of-month aggregation as provided by DatabaseService
+      final weekData = await _databaseService.getMonthlyStepData();
 
-      final now = DateTime.now();
-      final startOfMonth = DateTime(now.year, now.month, 1);
-
-      // Week buckets (some months show Week 5 depending on day spread)
-      Map<String, int> weekData = {
-        'Week 1': 0,
-        'Week 2': 0,
-        'Week 3': 0,
-        'Week 4': 0,
-        'Week 5': 0,
-      };
-
-      // Accumulate each day into its week-of-month bucket
-      for (int i = 0; i < 31; i++) {
-        final date = startOfMonth.add(Duration(days: i));
-        if (date.month != now.month) break;
-
-        // Week-of-month index: 0..4
-        final weekOfMonth = ((date.day - 1) / 7).floor();
-        final label = 'Week ${weekOfMonth + 1}';
-
-        final dayLabel = DateFormat('d MMM').format(date); // must match DB service
-        final steps = data[dayLabel] ?? 0;
-
-        weekData[label] = (weekData[label] ?? 0) + steps;
-      }
-
-      // Remove Week 5 if unused (keep minimal visual noise)
-      if ((weekData['Week 5'] ?? 0) == 0) {
-        weekData.remove('Week 5');
-      }
-
-      // Personal record for monthly view = max weekly total
+      // Compute max week
       int maxSteps = 0;
-      String maxStepsWeek = '';
-      weekData.forEach((label, total) {
-        if (total > maxSteps) {
-          maxSteps = total;
-          maxStepsWeek = label;
+      String maxWeekLabel = '';
+      for (final entry in weekData.entries) {
+        if (entry.value > maxSteps) {
+          maxSteps = entry.value;
+          maxWeekLabel = entry.key; // e.g., "Week 3"
         }
-      });
+      }
 
       setState(() {
-        _monthlyData = weekData;
+        _monthlyData = weekData;        // e.g., {Week 1: 12000, ...}
         _maxSteps = maxSteps;
-        _maxStepsDate = maxStepsWeek; // displayed as "Week X" in chart footer
+        _maxStepsDate = maxWeekLabel;   // show the week label under "Personal Record"
         _isLoading = false;
         _lastUpdated = DateTime.now();
       });
@@ -198,21 +195,21 @@ class _ActivityPageState extends State<ActivityPage> {
                   ),
                 )
               else if (selectedTabIndex == 0)
-                StepsBarChart(
-                  labels: _weeklyData.keys.toList(),
-                  stepValues: _weeklyData.values.map((e) => e.toDouble()).toList(),
-                  dateRange: 'Activity for last 7 days',
-                  maxSteps: _maxSteps,
-                  maxStepsDate: _maxStepsDate,
-                )
-              else
-                StepsBarChart(
-                  labels: _monthlyData.keys.toList(),
-                  stepValues: _monthlyData.values.map((e) => e.toDouble()).toList(),
-                  dateRange: 'Activity for ${DateFormat('MMMM yyyy').format(DateTime.now())}',
-                  maxSteps: _maxSteps,
-                  maxStepsDate: _maxStepsDate,
-                ),
+                  StepsBarChart(
+                    labels: _weeklyData.keys.toList(),
+                    stepValues: _weeklyData.values.map((e) => e.toDouble()).toList(),
+                    dateRange: 'Activity for last 7 days',
+                    maxSteps: _maxSteps,
+                    maxStepsDate: _maxStepsDate,
+                  )
+                else
+                  StepsBarChart(
+                    labels: _monthlyData.keys.toList(), // ["Week 1"..."Week 5"]
+                    stepValues: _monthlyData.values.map((e) => e.toDouble()).toList(),
+                    dateRange: 'Activity for ${DateFormat('MMMM yyyy').format(DateTime.now())}',
+                    maxSteps: _maxSteps,
+                    maxStepsDate: _maxStepsDate, // "Week X"
+                  ),
               if (_lastUpdated != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 10.0),

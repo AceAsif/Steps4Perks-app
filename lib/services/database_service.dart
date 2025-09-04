@@ -12,10 +12,6 @@ class DatabaseService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   String? _cachedDeviceId;
 
-  // ✅ NEW: public getter so callers can access users collection when needed
-  CollectionReference<Map<String, dynamic>> get usersCollection =>
-      _firestore.collection('users');
-
   // --- Device ID Management ---
   /// Retrieves a unique device ID. Caches it for subsequent calls.
   /// Provides unique fallbacks for non-physical devices/emulators.
@@ -282,50 +278,51 @@ class DatabaseService {
     return days[weekday - 1]; // Adjust for 0-based list index
   }
 
-  /// Retrieves monthly step data aggregated by week for the current device.
+  /// Retrieves monthly step data aggregated by **week of the current month** (Week 1..Week 5).
   /// Requires 'timestamp' field in dailyStats documents.
   Future<Map<String, int>> getMonthlyStepData() async {
     final deviceId = await getDeviceId();
     final now = DateTime.now().toLocal();
-    // Calculate the start of the day 29 days ago (for a 30-day period including today)
-    final thirtyDaysAgo = DateTime(now.year, now.month, now.day).subtract(const Duration(days: 29));
+
+    // Start = first day of current month at 00:00, End = first day of next month
+    final startOfMonth = DateTime(now.year, now.month, 1);
+    final startOfNextMonth = (now.month == 12)
+        ? DateTime(now.year + 1, 1, 1)
+        : DateTime(now.year, now.month + 1, 1);
 
     final querySnapshot = await _firestore
-        .collection('users') // Consistent parent collection
+        .collection('users')
         .doc(deviceId)
         .collection('dailyStats')
-        .where('timestamp', isGreaterThanOrEqualTo: Timestamp.fromDate(thirtyDaysAgo))
-        .orderBy('timestamp') // Order by timestamp for correct chronological retrieval
+        .where('timestamp', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfMonth))
+        .where('timestamp', isLessThan: Timestamp.fromDate(startOfNextMonth))
+        .orderBy('timestamp')
         .get();
 
+    // Fixed buckets for up to 5 partial weeks in a month
     final Map<String, int> weekData = {
-      'Week 1': 0, // Represents days 0-6 from thirtyDaysAgo
-      'Week 2': 0, // Represents days 7-13
-      'Week 3': 0, // Represents days 14-20
-      'Week 4': 0, // Represents days 21-27
-      'Week 5': 0, // Represents days 28-29 (up to 30 days total)
+      'Week 1': 0,
+      'Week 2': 0,
+      'Week 3': 0,
+      'Week 4': 0,
+      'Week 5': 0,
     };
 
     for (final doc in querySnapshot.docs) {
       final data = doc.data();
-      final timestamp = data['timestamp'] as Timestamp?; // Use null-aware access for data
-      final steps = (data['steps'] as num?)?.toInt() ?? 0; // Use null-aware access for data
+      final timestamp = data['timestamp'] as Timestamp?;
+      final steps = (data['steps'] as num?)?.toInt() ?? 0;
 
       if (timestamp != null) {
         final date = timestamp.toDate().toLocal();
-        // Calculate the number of days from `thirtyDaysAgo` to the current document's date.
-        // This ensures Week 1 correctly refers to the first week of the 30-day period.
-        final int daysIntoPeriod = date.difference(thirtyDaysAgo).inDays;
-
-        // Determine which 7-day bucket the date falls into (1-indexed week number)
-        final int weekNumber = (daysIntoPeriod ~/ 7) + 1;
-
-        if (weekNumber >= 1 && weekNumber <= 5) { // Ensure the week number is within our defined range
-          final label = 'Week $weekNumber';
-          weekData[label] = (weekData[label] ?? 0) + steps; // Aggregate steps for the corresponding week
-        }
+        // 0-based week index inside the month
+        final int weekIndexZeroBased = ((date.day - 1) ~/ 7); // 0..4
+        final int weekNumber = (weekIndexZeroBased + 1).clamp(1, 5);
+        final label = 'Week $weekNumber';
+        weekData[label] = (weekData[label] ?? 0) + steps;
       }
     }
+
     return weekData;
   }
 
@@ -507,15 +504,13 @@ class DatabaseService {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // ✅ NEW: User profile helpers (minimal additions, no breaking changes)
-  // ---------------------------------------------------------------------------
+  // ---------- NEW: lightweight profile helpers for name -----------
 
-  /// Get the current device's user profile document data (if it exists).
   Future<Map<String, dynamic>?> getUserProfile() async {
+    final deviceId = await getDeviceId();
+    final userRef = _firestore.collection('users').doc(deviceId);
     try {
-      final deviceId = await getDeviceId();
-      final snap = await usersCollection.doc(deviceId).get();
+      final snap = await userRef.get();
       return snap.data();
     } catch (e) {
       debugPrint('❌ getUserProfile error: $e');
@@ -523,25 +518,17 @@ class DatabaseService {
     }
   }
 
-  /// Update parts of the user profile (e.g., name). Pass only fields to change.
-  Future<void> updateUserProfile({
-    String? name,
-    String? photoUrl, // kept for future use; ignored if null
-    // email intentionally omitted for now (read-only)
-  }) async {
+  Future<void> updateUserName(String name) async {
     final deviceId = await getDeviceId();
-    final Map<String, dynamic> update = {};
-    if (name != null) update['name'] = name;
-    if (photoUrl != null) update['photoUrl'] = photoUrl;
-
-    if (update.isEmpty) return;
-
+    final userRef = _firestore.collection('users').doc(deviceId);
     try {
-      await usersCollection.doc(deviceId).set(update, SetOptions(merge: true));
-      debugPrint('✅ updateUserProfile → $update');
-    } catch (e, st) {
-      debugPrint('❌ updateUserProfile failed: $e');
-      debugPrint('Stack Trace: $st');
+      await userRef.set({
+        'name': name,
+        'nameUpdatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      debugPrint('✅ updateUserName → $name');
+    } catch (e) {
+      debugPrint('❌ updateUserName failed: $e');
       rethrow;
     }
   }

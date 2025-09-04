@@ -3,15 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:myapp/services/notification_service.dart';
 import 'package:myapp/widgets/profile_specific/options_tile.dart';
-import 'package:myapp/widgets/profile_specific/notification_rationale_dialog.dart';
 import 'package:myapp/widgets/profile_specific/disable_notification_dialog.dart';
 import 'package:myapp/widgets/profile_specific/notification_settings_dialog.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:myapp/services/database_service.dart'; // Import DatabaseService
 import 'package:myapp/widgets/loading_dialog.dart'; // Add a dialog for sync status
 import 'package:permission_handler/permission_handler.dart';
-import 'package:timezone/timezone.dart' as tz;
-import 'package:timezone/data/latest.dart' as tz;
 
 class ProfilePageContent extends StatefulWidget {
   const ProfilePageContent({super.key});
@@ -33,7 +30,7 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
   void initState() {
     super.initState();
     _initializeAndCheckPermissions();
-    _loadProfile(); // ✅ uses DatabaseService helper
+    _loadProfile(); // ✅ pull from Firestore
   }
 
   Future<void> _initializeAndCheckPermissions() async {
@@ -65,7 +62,7 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
     if (data != null) {
       setState(() {
         _name = data['name'] ?? _name;
-        _email = data['email'] ?? _email; // still read-only in UI
+        _email = data['email'] ?? _email; // read-only in UI
       });
     }
   }
@@ -95,7 +92,8 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
     );
 
     if (newName != null && newName.isNotEmpty) {
-      await _databaseService.updateUserProfile(name: newName); // ✅ helper
+      // ⬇️ FIX: call the correct helper
+      await _databaseService.updateUserName(newName);
       setState(() => _name = newName);
 
       if (mounted) {
