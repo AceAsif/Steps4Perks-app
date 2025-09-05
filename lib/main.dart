@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:myapp/features/step_tracker.dart';
+import 'package:myapp/features/profile_image_provider.dart'; // ✅ Add this line
 import 'package:myapp/theme/app_theme.dart';
 import 'package:myapp/services/notification_service.dart';
 import 'package:myapp/view/splash_screen.dart';
@@ -8,24 +9,20 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:shared_preferences/shared_preferences.dart'; // Import SharedPreferences
+import 'package:shared_preferences/shared_preferences.dart';
 
 // GENERATED Firebase config
 import 'firebase_options.dart';
 
-// Instantiate your NotificationService (it's a singleton, so this is fine)
 final NotificationService notificationService = NotificationService();
 
-// Existing: TOP-LEVEL FCM BACKGROUND MESSAGE HANDLER
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   debugPrint("Handling a background message: ${message.messageId}");
-  debugPrint("Background message data: ${message.data}");
 }
 
-// NEW: TOP-LEVEL LOCAL NOTIFICATION BACKGROUND RESPONSE HANDLER
-@pragma('vm:entry-point') // Required for Flutter background isolates
+@pragma('vm:entry-point')
 void onDidReceiveBackgroundNotificationResponse(NotificationResponse notificationResponse) {
   debugPrint('🔔 Local Background Notification Tapped → Payload: ${notificationResponse.payload}');
 }
@@ -38,7 +35,6 @@ void notificationTapBackground(NotificationResponse notificationResponse) {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize SharedPreferences first
   final prefs = await SharedPreferences.getInstance();
   final onboardingComplete = prefs.getBool('onboardingComplete') ?? false;
 
@@ -46,7 +42,7 @@ void main() async {
     await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
     debugPrint('✅ Firebase initialized for main app.');
   } catch (e) {
-    debugPrint('❌ Firebase initialization error for main app: $e');
+    debugPrint('❌ Firebase initialization error: $e');
   }
 
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
@@ -65,9 +61,13 @@ void main() async {
     debugPrint('❌ NotificationService initialization error: $e');
   }
 
+  // ✅ Use MultiProvider to include StepTracker AND ProfileImageProvider
   runApp(
-    ChangeNotifierProvider(
-      create: (_) => StepTracker(),
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => StepTracker()),
+        ChangeNotifierProvider(create: (_) => ProfileImageProvider()), // ✅ Add this
+      ],
       child: MyApp(onboardingComplete: onboardingComplete),
     ),
   );
