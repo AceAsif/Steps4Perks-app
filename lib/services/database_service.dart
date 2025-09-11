@@ -1,5 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:device_info_plus/device_info_plus.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:myapp/features/step_tracker.dart';
 import 'package:intl/intl.dart';
@@ -10,57 +10,29 @@ import 'package:myapp/models/redeemed_reward_history_item.dart';
 
 class DatabaseService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  String? _cachedDeviceId;
 
-  // --- Device ID Management ---
-  /// Retrieves a unique device ID. Caches it for subsequent calls.
-  /// Provides unique fallbacks for non-physical devices/emulators.
-  Future<String> getDeviceId() async {
-    if (_cachedDeviceId != null) return _cachedDeviceId!;
-    final deviceInfo = DeviceInfoPlugin();
-
-    try {
-      if (defaultTargetPlatform == TargetPlatform.android) {
-        final androidInfo = await deviceInfo.androidInfo;
-        // Android ID is generally unique to the device and app installation.
-        _cachedDeviceId = androidInfo.id;
-      } else if (defaultTargetPlatform == TargetPlatform.iOS) {
-        final iosInfo = await deviceInfo.iosInfo;
-        // identifierForVendor is unique per app installation on iOS devices.
-        _cachedDeviceId = iosInfo.identifierForVendor ?? 'unknown-ios-vendor-${DateTime.now().millisecondsSinceEpoch}';
-      } else {
-        // For web, desktop, or other platforms/emulators where a stable hardware ID isn't available.
-        // Using a timestamp to ensure a unique ID for each app session.
-        _cachedDeviceId = 'unknown-platform-id-${DateTime.now().millisecondsSinceEpoch}';
-        debugPrint('⚠️ Running on an unexpected platform or simulator. Using a generated ID.');
-      }
-    } catch (e) {
-      debugPrint('❌ Failed to retrieve device ID: $e');
-      // Fallback in case of any error during device ID retrieval.
-      _cachedDeviceId = 'error-device-retrieval-${DateTime.now().millisecondsSinceEpoch}';
-    }
-
-    // Final check to ensure the cached ID is not null or empty.
-    if (_cachedDeviceId == null || _cachedDeviceId!.isEmpty) {
-      _cachedDeviceId = 'default-fallback-id-${DateTime.now().millisecondsSinceEpoch}';
-    }
-    debugPrint('Device ID: $_cachedDeviceId'); // Log the device ID for debugging
-    return _cachedDeviceId!;
+  // --- User ID Management ---
+  /// Retrieves the current user's UID from Firebase Authentication.
+  /// If no user is signed in, it returns null.
+  String? getUserId() {
+    return FirebaseAuth.instance.currentUser?.uid;
   }
 
   // --- Helper for Consistent Document Paths ---
 
-  /// Provides a consistent DocumentReference for daily stats for the current device.
-  /// All daily statistic operations (save, update, get, delete) should use this helper
-  /// to ensure data is stored and retrieved from the same location.
-  /// Structure: `users/{deviceId}/dailyStats/{date}`
-  Future<DocumentReference> _getDailyStatsDocRef(String date) async {
-    final deviceId = await getDeviceId();
+  /// Provides a consistent DocumentReference for daily stats for the current user.
+  /// Structure: `users/{userUid}/dailyStats/{date}`
+  DocumentReference? _getDailyStatsDocRef(String date) {
+    final userUid = getUserId();
+    if (userUid == null) {
+      debugPrint('❌ _getDailyStatsDocRef: User not authenticated.');
+      return null;
+    }
     return _firestore
-        .collection('users') // Top-level collection for user/device data
-        .doc(deviceId)       // Document representing the specific device/user
+        .collection('users') // Top-level collection for user data
+        .doc(userUid) // Document representing the specific user
         .collection('dailyStats') // Subcollection for daily statistics documents
-        .doc(date);          // Document for the specific date (e.g., '2025-07-24')
+        .doc(date); // Document for the specific date (e.g., '2025-07-24')
   }
 
   // --- Core Data Operations ---
@@ -68,6 +40,12 @@ class DatabaseService {
   /// Manually syncs local data to Firestore. This is useful for providing a sync button
   /// to the user for manual data saving and error recovery.
   Future<bool> manualSync() async {
+    final userUid = getUserId();
+    if (userUid == null) {
+      debugPrint('❌ manualSync: User not authenticated. Cannot sync.');
+      return false;
+    }
+
     try {
       debugPrint('🔄 Starting manual sync...');
       final today = DateFormat('yyyy-MM-dd').format(DateTime.now().toLocal());
@@ -87,12 +65,9 @@ class DatabaseService {
         claimedDailyBonus: hasClaimedBonus,
       );
 
-      // Also update the main user profile with the latest streak and total points
+      // Also update the main user profile with the latest streak
       // from the StepTracker to ensure consistency.
       await setUserProfileStreak(localStreak);
-
-      // Since totalPoints is managed by `claimDailyPoints` and `redeemDailyPoints`,
-      // we don't need to update it here.
 
       debugPrint('✅ Manual sync successful!');
       return true;
@@ -103,17 +78,16 @@ class DatabaseService {
   }
 
   /// Saves or updates daily step statistics for a specific date.
-  /// Data is stored under the consistent path: `users/{deviceId}/dailyStats/{date}`.
-  /// Total points are now managed primarily in the main user profile document.
+  /// Data is stored under the consistent path: `users/{userUid}/dailyStats/{date}`.
   Future<void> saveStatsAndPoints({
     required String date,
     required int steps,
     required int dailyPointsEarned,
     required int streak,
-    // Removed totalPoints from here as it should be managed centrally
     bool claimedDailyBonus = false,
   }) async {
-    final docRef = await _getDailyStatsDocRef(date); // Use the consistent path helper
+    final docRef = _getDailyStatsDocRef(date); // Use the consistent path helper
+    if (docRef == null) return;
 
     final batch = _firestore.batch(); // Use a batch for atomic updates
 
@@ -139,14 +113,13 @@ class DatabaseService {
   }
 
   /// Updates only the daily bonus claim status for a specific date.
-  /// Data is updated under the consistent path: `users/{deviceId}/dailyStats/{date}`.
-  /// Total points are now managed primarily in the main user profile document.
+  /// Data is updated under the consistent path: `users/{userUid}/dailyStats/{date}`.
   Future<void> updateDailyClaimStatus({
     required String date,
     required bool claimed,
-    // Removed totalPoints from here as it should be managed centrally
   }) async {
-    final docRef = await _getDailyStatsDocRef(date); // Use the consistent path helper
+    final docRef = _getDailyStatsDocRef(date); // Use the consistent path helper
+    if (docRef == null) return;
 
     try {
       await docRef.set({
@@ -162,10 +135,12 @@ class DatabaseService {
   }
 
   /// Retrieves daily stats for a specific date.
-  /// Data is retrieved from the consistent path: `users/{deviceId}/dailyStats/{date}`.
+  /// Data is retrieved from the consistent path: `users/{userUid}/dailyStats/{date}`.
   Future<Map<String, dynamic>?> getDailyStatsOnce(String date) async {
     try {
-      final docRef = await _getDailyStatsDocRef(date); // Use the consistent path helper
+      final docRef = _getDailyStatsDocRef(date); // Use the consistent path helper
+      if (docRef == null) return null;
+
       final docSnapshot = await docRef.get();
       if (docSnapshot.exists) {
         // Explicitly cast the data to Map<String, dynamic>
@@ -181,16 +156,19 @@ class DatabaseService {
   // --- Redeeming Points (Spending Accumulated Points) ---
 
   /// Handles the redemption (spending) of accumulated points.
-  /// This method decrements points from the main user profile document (`users/{deviceId}`)
-  /// and optionally logs the redemption amount in the daily stats document.
+  /// This method decrements points from the main user profile document (`users/{userUid}`).
   Future<bool> redeemDailyPoints({
     required String date, // Date for logging the daily redemption amount
     required int pointsToRedeem,
     required int currentTotalPoints, // The total points after local deduction (for transaction check)
   }) async {
-    final deviceId = await getDeviceId();
+    final userUid = getUserId();
+    if (userUid == null) {
+      debugPrint('❌ redeemDailyPoints: User not authenticated.');
+      return false;
+    }
     // Reference to the main user profile document where overall total points are stored.
-    final userProfileRef = _firestore.collection('users').doc(deviceId);
+    final userProfileRef = _firestore.collection('users').doc(userUid);
 
     return await _firestore.runTransaction((transaction) async {
       final userSnapshot = await transaction.get(userProfileRef);
@@ -204,18 +182,19 @@ class DatabaseService {
       }
 
       // Decrement points in the user's main profile document.
-      // Use .set with merge:true to create document if it doesn't exist, or merge if it does.
       transaction.set(userProfileRef, {
         'totalPoints': FieldValue.increment(-pointsToRedeem),
         'lastRedeemedAt': FieldValue.serverTimestamp(), // Timestamp of this redemption
       }, SetOptions(merge: true));
 
       // Optionally, log the redeemed amount for the specific day in dailyStats.
-      final dailyStatsDocRef = await _getDailyStatsDocRef(date);
-      transaction.set(dailyStatsDocRef, {
-        'pointsRedeemedToday': FieldValue.increment(pointsToRedeem), // Track amount redeemed today
-        'lastRedeemedTimestamp': FieldValue.serverTimestamp(), // Timestamp of this specific redemption
-      }, SetOptions(merge: true));
+      final dailyStatsDocRef = _getDailyStatsDocRef(date);
+      if (dailyStatsDocRef != null) {
+        transaction.set(dailyStatsDocRef, {
+          'pointsRedeemedToday': FieldValue.increment(pointsToRedeem), // Track amount redeemed today
+          'lastRedeemedTimestamp': FieldValue.serverTimestamp(), // Timestamp of this specific redemption
+        }, SetOptions(merge: true));
+      }
 
       return true; // Transaction successful
     }).catchError((error, stackTrace) {
@@ -227,64 +206,58 @@ class DatabaseService {
 
   // --- Data Retrieval for Charts ---
 
-  /// Retrieves weekly step data for the current device.
-  /// Aggregates steps by weekday. Requires 'timestamp' field in dailyStats documents.
+  /// Retrieves weekly step data for the current user.
   Future<Map<String, int>> getWeeklyStepData() async {
-    final deviceId = await getDeviceId();
+    final userUid = getUserId();
+    if (userUid == null) return {};
+
     final now = DateTime.now().toLocal();
-    // Calculate the start of the day 6 days ago (for a 7-day period including today)
     final sevenDaysAgo = DateTime(now.year, now.month, now.day).subtract(const Duration(days: 6));
 
     final querySnapshot = await _firestore
-        .collection('users') // Consistent parent collection
-        .doc(deviceId)
+        .collection('users')
+        .doc(userUid)
         .collection('dailyStats')
         .where('timestamp', isGreaterThanOrEqualTo: Timestamp.fromDate(sevenDaysAgo))
-        .orderBy('timestamp') // Order by timestamp for correct chronological retrieval
+        .orderBy('timestamp')
         .get();
 
-    final stepData = <String, int>{}; // Map to store aggregated steps by weekday label
+    final stepData = <String, int>{};
 
     for (final doc in querySnapshot.docs) {
       final data = doc.data();
-      final timestamp = data['timestamp'] as Timestamp?; // Use null-aware access for data
-      // Safely cast 'steps' to num then to int, defaulting to 0 if null or invalid.
-      final steps = (data['steps'] as num?)?.toInt() ?? 0; // Use null-aware access for data
+      final timestamp = data['timestamp'] as Timestamp?;
+      final steps = (data['steps'] as num?)?.toInt() ?? 0;
 
       if (timestamp != null) {
         final date = timestamp.toDate().toLocal();
         final label = _getWeekdayLabel(date.weekday);
-        stepData[label] = (stepData[label] ?? 0) + steps; // Aggregate steps for the same weekday
+        stepData[label] = (stepData[label] ?? 0) + steps;
       }
     }
 
-    // Initialize all 7 days of the week in correct order for display,
-    // ensuring days with no data show 0 steps.
     final Map<String, int> orderedStepData = {};
     for (int i = 0; i < 7; i++) {
-      // Calculate each day from 'sevenDaysAgo' up to 'today'
       final dateForDay = DateTime(sevenDaysAgo.year, sevenDaysAgo.month, sevenDaysAgo.day)
           .add(Duration(days: i));
       final label = _getWeekdayLabel(dateForDay.weekday);
-      orderedStepData[label] = stepData[label] ?? 0; // Use aggregated data or 0
+      orderedStepData[label] = stepData[label] ?? 0;
     }
 
     return orderedStepData;
   }
 
-  /// Helper to convert a weekday integer (1=Monday, 7=Sunday) to a short label.
   String _getWeekdayLabel(int weekday) {
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    return days[weekday - 1]; // Adjust for 0-based list index
+    return days[weekday - 1];
   }
 
-  /// Retrieves monthly step data aggregated by **week of the current month** (Week 1..Week 5).
-  /// Requires 'timestamp' field in dailyStats documents.
+  /// Retrieves monthly step data aggregated by **week of the current month**.
   Future<Map<String, int>> getMonthlyStepData() async {
-    final deviceId = await getDeviceId();
-    final now = DateTime.now().toLocal();
+    final userUid = getUserId();
+    if (userUid == null) return {};
 
-    // Start = first day of current month at 00:00, End = first day of next month
+    final now = DateTime.now().toLocal();
     final startOfMonth = DateTime(now.year, now.month, 1);
     final startOfNextMonth = (now.month == 12)
         ? DateTime(now.year + 1, 1, 1)
@@ -292,14 +265,13 @@ class DatabaseService {
 
     final querySnapshot = await _firestore
         .collection('users')
-        .doc(deviceId)
+        .doc(userUid)
         .collection('dailyStats')
         .where('timestamp', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfMonth))
         .where('timestamp', isLessThan: Timestamp.fromDate(startOfNextMonth))
         .orderBy('timestamp')
         .get();
 
-    // Fixed buckets for up to 5 partial weeks in a month
     final Map<String, int> weekData = {
       'Week 1': 0,
       'Week 2': 0,
@@ -315,8 +287,7 @@ class DatabaseService {
 
       if (timestamp != null) {
         final date = timestamp.toDate().toLocal();
-        // 0-based week index inside the month
-        final int weekIndexZeroBased = ((date.day - 1) ~/ 7); // 0..4
+        final int weekIndexZeroBased = ((date.day - 1) ~/ 7);
         final int weekNumber = (weekIndexZeroBased + 1).clamp(1, 5);
         final label = 'Week $weekNumber';
         weekData[label] = (weekData[label] ?? 0) + steps;
@@ -328,24 +299,24 @@ class DatabaseService {
 
   // --- Deletion ---
 
-  /// Deletes all dailyStats documents for the current device.
-  /// Targets the consistent path: `users/{deviceId}/dailyStats` subcollection.
-  /// Uses a batch write for efficient deletion of multiple documents.
+  /// Deletes all dailyStats documents for the current user.
   Future<void> deleteAllDailyStats() async {
+    final userUid = getUserId();
+    if (userUid == null) return;
+
     try {
-      final deviceId = await getDeviceId();
       final collectionRef = _firestore
-          .collection('users') // Consistent parent collection
-          .doc(deviceId)
+          .collection('users')
+          .doc(userUid)
           .collection('dailyStats');
 
       final snapshot = await collectionRef.get();
-      final batch = _firestore.batch(); // Create a batch for deletions
+      final batch = _firestore.batch();
       for (final doc in snapshot.docs) {
-        batch.delete(doc.reference); // Add each document's deletion to the batch
+        batch.delete(doc.reference);
       }
-      await batch.commit(); // Commit all deletions at once
-      debugPrint('🗑️ DatabaseService: All dailyStats documents deleted for device: $deviceId');
+      await batch.commit();
+      debugPrint('🗑️ DatabaseService: All dailyStats documents deleted for user: $userUid');
     } catch (e, stackTrace) {
       debugPrint('❌ DatabaseService: Failed to delete dailyStats: $e');
       debugPrint('Stack Trace: $stackTrace');
@@ -354,7 +325,6 @@ class DatabaseService {
 
   // --- Rewards & Points Management ---
 
-  // MODIFIED: addRedeemedReward to accept rewardName and pointsCost for history
   Future<void> addRedeemedReward({
     required String rewardType,
     required num value,
@@ -364,13 +334,15 @@ class DatabaseService {
     int? pointsCost,
     String? imageUrl,
   }) async {
+    final userUid = getUserId();
+    if (userUid == null) return;
+
     try {
-      final deviceId = await getDeviceId();
       final rewardRef = _firestore
           .collection('users')
-          .doc(deviceId)
+          .doc(userUid)
           .collection('redeemed_rewards')
-          .doc(); // auto ID
+          .doc();
 
       final data = {
         'rewardType': rewardType,
@@ -393,23 +365,22 @@ class DatabaseService {
   }
 
   Future<void> claimDailyPoints() async {
-    final deviceId = await getDeviceId();
-    final userRef = _firestore.collection('users').doc(deviceId);
+    final userUid = getUserId();
+    if (userUid == null) return;
+
+    final userRef = _firestore.collection('users').doc(userUid);
     final today = DateFormat('yyyy-MM-dd').format(DateTime.now().toLocal());
     final dailyStatsRef = userRef.collection('dailyStats').doc(today);
 
     await _firestore.runTransaction((transaction) async {
       final userSnapshot = await transaction.get(userRef);
-      // Get existing total points, default to 0 if document/field doesn't exist
       final int currentTotalPoints = (userSnapshot.data()?['totalPoints'] as int? ?? 0);
 
-      // 1. update user profile totalPoints. Use .set with merge:true to create if not exists.
       transaction.set(userRef, {
         'totalPoints': currentTotalPoints + StepTracker.maxDailyPoints,
-        'lastClaimedAt': FieldValue.serverTimestamp(), // Track when points were last claimed
+        'lastClaimedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
-      // 2. update today’s dailyStats document
       transaction.set(dailyStatsRef, {
         'claimedDailyBonus': true,
         'dailyPointsEarned': StepTracker.maxDailyPoints,
@@ -419,27 +390,29 @@ class DatabaseService {
     });
   }
 
-  // MODIFIED: getTotalPointsFromUserProfile to fetch from the main user document
   Future<int> getTotalPointsFromUserProfile() async {
-    final deviceId = await getDeviceId();
-    final userProfileRef = _firestore.collection('users').doc(deviceId);
+    final userUid = getUserId();
+    if (userUid == null) return 0;
+
+    final userProfileRef = _firestore.collection('users').doc(userUid);
     try {
       final userSnapshot = await userProfileRef.get();
       if (userSnapshot.exists) {
         return userSnapshot.data()?['totalPoints'] as int? ?? 0;
       } else {
-        return 0; // User profile document doesn't exist
+        return 0;
       }
     } catch (e) {
       debugPrint('Error getting total points from user profile: $e');
-      return 0; // Return 0 on error
+      return 0;
     }
   }
 
-  // Set user's current streak on the main user profile doc
   Future<void> setUserProfileStreak(int streak) async {
-    final deviceId = await getDeviceId();
-    final userRef = _firestore.collection('users').doc(deviceId);
+    final userUid = getUserId();
+    if (userUid == null) return;
+
+    final userRef = _firestore.collection('users').doc(userUid);
     try {
       await userRef.set({
         'currentStreak': streak,
@@ -453,10 +426,11 @@ class DatabaseService {
     }
   }
 
-  // Get user's current streak from the main user profile doc
   Future<int> getUserProfileStreak() async {
-    final deviceId = await getDeviceId();
-    final userRef = _firestore.collection('users').doc(deviceId);
+    final userUid = getUserId();
+    if (userUid == null) return 0;
+
+    final userRef = _firestore.collection('users').doc(userUid);
     try {
       final snap = await userRef.get();
       return snap.data()?['currentStreak'] as int? ?? 0;
@@ -466,12 +440,14 @@ class DatabaseService {
     }
   }
 
-  // MODIFIED: fetchRedeemedRewards to return List<RedeemedRewardHistoryItem>
-  Future<List<RedeemedRewardHistoryItem>> fetchRedeemedRewards(String deviceId) async {
+  Future<List<RedeemedRewardHistoryItem>> fetchRedeemedRewards() async {
+    final userUid = getUserId();
+    if (userUid == null) return [];
+
     try {
       final rewardRef = _firestore
           .collection('users')
-          .doc(deviceId)
+          .doc(userUid)
           .collection('redeemed_rewards');
 
       final querySnapshot = await rewardRef.get();
@@ -481,18 +457,17 @@ class DatabaseService {
 
       return rewardList;
     } catch (e) {
-      debugPrint('Error fetching redeemed rewards: $e'); // <--- CHANGE FROM print TO debugPrint
+      debugPrint('Error fetching redeemed rewards: $e');
       return [];
     }
   }
 
-  // MODIFIED: fetchAvailableRewards to query rewards_catalogue and return List<AvailableRewardItem>
   Future<List<AvailableRewardItem>> fetchAvailableRewards() async {
     try {
       final snapshot = await _firestore
           .collection('rewards_catalogue')
           .where('isActive', isEqualTo: true)
-          .orderBy('rewardName') // Order by rewardName
+          .orderBy('rewardName')
           .get();
 
       return snapshot.docs
@@ -504,11 +479,11 @@ class DatabaseService {
     }
   }
 
-  // ---------- NEW: lightweight profile helpers for name -----------
-
   Future<Map<String, dynamic>?> getUserProfile() async {
-    final deviceId = await getDeviceId();
-    final userRef = _firestore.collection('users').doc(deviceId);
+    final userUid = getUserId();
+    if (userUid == null) return null;
+
+    final userRef = _firestore.collection('users').doc(userUid);
     try {
       final snap = await userRef.get();
       return snap.data();
@@ -519,8 +494,10 @@ class DatabaseService {
   }
 
   Future<void> updateUserName(String name) async {
-    final deviceId = await getDeviceId();
-    final userRef = _firestore.collection('users').doc(deviceId);
+    final userUid = getUserId();
+    if (userUid == null) return;
+
+    final userRef = _firestore.collection('users').doc(userUid);
     try {
       await userRef.set({
         'name': name,
@@ -531,5 +508,24 @@ class DatabaseService {
       debugPrint('❌ updateUserName failed: $e');
       rethrow;
     }
+  }
+
+  // A NEW method to create the initial user document on sign-up
+  Future<void> createUserDocument({
+    required String userUid,
+    required String email,
+    required int age,
+  }) async {
+    final userRef = _firestore.collection('users').doc(userUid);
+    await userRef.set({
+      'email': email,
+      'age': age,
+      'name': '',
+      'totalPoints': 0,
+      'currentStreak': 0,
+      'lastClaimedDate': null,
+      'lastRedeemedDate': null,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
   }
 }

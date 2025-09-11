@@ -22,11 +22,11 @@ class _RewardHistoryPageState extends State<RewardHistoryPage> {
   }
 
   Future<List<RedeemedRewardHistoryItem>> _fetchRewardHistory() async {
-    final userId = await DatabaseService().getDeviceId();
+    final userId = DatabaseService().getUserId();
     debugPrint("History Page: Fetching rewards for userId: $userId");
 
-    if (userId.isEmpty) {
-      debugPrint("History Page: User ID is empty, cannot fetch reward history.");
+    if (userId == null || userId.isEmpty) {
+      debugPrint("History Page: User ID is empty or null, cannot fetch reward history.");
       return [];
     }
 
@@ -106,21 +106,23 @@ class _RewardHistoryPageState extends State<RewardHistoryPage> {
                         );
 
                         if (confirmed == true) {
-                          final userId = await DatabaseService().getDeviceId();
-                          await FirebaseFirestore.instance
-                              .collection('users')
-                              .doc(userId)
-                              .collection('redeemed_rewards')
-                              .doc(reward.id)
-                              .delete();
+                          final userId = DatabaseService().getUserId();
+                          if (userId != null) {
+                            await FirebaseFirestore.instance
+                                .collection('users')
+                                .doc(userId)
+                                .collection('redeemed_rewards')
+                                .doc(reward.id)
+                                .delete();
 
-                          setState(() {
-                            _rewardsFuture = _fetchRewardHistory();
-                          });
+                            setState(() {
+                              _rewardsFuture = _fetchRewardHistory();
+                            });
 
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Reward deleted')),
-                          );
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Reward deleted')),
+                            );
+                          }
                         }
                       },
                       backgroundColor: Colors.red,

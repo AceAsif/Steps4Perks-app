@@ -4,8 +4,9 @@ import 'package:myapp/features/step_gauge.dart';
 import 'package:myapp/features/step_tracker.dart';
 import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
-import 'package:flutter/foundation.dart'; // Import kDebugMode
-//import 'package:myapp/services/database_service.dart';
+import 'package:flutter/foundation.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:myapp/services/database_service.dart';
 
 // This is the parent widget that manages the state and provides keys for the tutorial.
 class HomePage extends StatefulWidget {
@@ -28,58 +29,74 @@ class HomePage extends StatefulWidget {
 }
 
 class HomePageState extends State<HomePage> {
-  int _oldSteps = 0; // Used for TweenAnimationBuilder's 'begin' value
-  bool _isLoading = true; // Controls shimmer visibility
-  bool _hasLoadedData = false; // Prevents redundant initial data loads
+  int _oldSteps = 0;
+  bool _isLoading = true;
 
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadData(); // Trigger data loading after the first frame
-    });
+  Widget build(BuildContext context) {
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        // If the user is signed in, build the homepage content
+        if (snapshot.hasData) {
+          final user = snapshot.data!;
+          return FutureBuilder<Map<String, dynamic>?>(
+            future: _loadData(user.uid),
+            builder: (context, dataSnapshot) {
+              if (dataSnapshot.connectionState == ConnectionState.waiting) {
+                return _buildShimmer(MediaQuery.of(context).size.height);
+              }
+
+              if (dataSnapshot.hasError) {
+                return Center(child: Text("Error loading data: ${dataSnapshot.error}"));
+              }
+
+              return HomePageContent(
+                stepGaugeKey: widget.stepGaugeKey,
+                dailyStreakKey: widget.dailyStreakKey,
+                pointsEarnedKey: widget.pointsEarnedKey,
+                mockStepsKey: widget.mockStepsKey,
+                oldSteps: _oldSteps,
+                isLoading: _isLoading,
+                loadData: () => _loadData(user.uid),
+                parentContext: context,
+              );
+            },
+          );
+        } else {
+          // If no user is signed in, show a simple message
+          return const Center(child: Text("Please sign in."));
+        }
+      },
+    );
   }
 
-  Future<void> _loadData() async {
-    debugPrint("🔁 _loadData called");
-    if (_hasLoadedData) {
-      debugPrint("⏩ Skipping _loadData (already loaded)");
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-      return;
-    }
-
+  Future<Map<String, dynamic>?> _loadData(String userId) async {
     final stepTracker = Provider.of<StepTracker>(context, listen: false);
     final today = DateFormat('yyyy-MM-dd').format(DateTime.now().toLocal());
 
     try {
-      final data = await stepTracker.getDailyStatsForUI(today);
+      // Use the correct method, which is `getDailyStatsOnce`.
+      final data = await DatabaseService().getDailyStatsOnce(userId);
       debugPrint(data != null ? "📦 Firestore data received" : "🚫 No data found for today");
 
       if (data != null) {
         debugPrint("👣 Steps: ${data['steps']}, 🔥 Streak: ${data['streak']}, 🎯 Daily Points: ${data['dailyPointsEarned']}");
         stepTracker.setCurrentSteps(data['steps'] ?? 0);
         final int streakFromDb = (data['streak'] as int?) ?? 0;
-        // Prefer the larger of provider (live) and DB, so we don't clobber the immediate increment
         if (streakFromDb > stepTracker.currentStreak) {
           stepTracker.setCurrentStreak(streakFromDb);
         }
-        // Ensure that hasClaimedToday reflects the 'claimedDailyBonus' field from Firestore
-        // (You've updated database_service.dart to use 'claimedDailyBonus')
         stepTracker.setClaimedToday(data['claimedDailyBonus'] == true);
       } else {
         stepTracker.setCurrentSteps(0);
         stepTracker.setClaimedToday(false);
       }
 
-      _hasLoadedData = true;
-    } catch (e, stackTrace) {
-      debugPrint('⚠️ Error loading data: $e');
-      debugPrint('Stack Trace: $stackTrace');
-    } finally {
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -87,20 +104,36 @@ class HomePageState extends State<HomePage> {
           debugPrint("✅ Data loading complete. isLoading = $_isLoading, _oldSteps = $_oldSteps");
         });
       }
+      return data;
+    } catch (e, stackTrace) {
+      debugPrint('⚠️ Error loading data: $e');
+      debugPrint('Stack Trace: $stackTrace');
+      return null;
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return HomePageContent(
-      stepGaugeKey: widget.stepGaugeKey,
-      dailyStreakKey: widget.dailyStreakKey,
-      pointsEarnedKey: widget.pointsEarnedKey,
-      mockStepsKey: widget.mockStepsKey,
-      oldSteps: _oldSteps,
-      isLoading: _isLoading,
-      loadData: _loadData,
-      parentContext: context, // Pass the context here
+  Widget _buildShimmer(double screenHeight) {
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      children: [
+        Shimmer.fromColors(
+          baseColor: Colors.grey[300]!,
+          highlightColor: Colors.grey[100]!,
+          child: Column(
+            children: List.generate(
+              3,
+                  (index) => Container(
+                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                height: 100,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -114,7 +147,7 @@ class HomePageContent extends StatelessWidget {
   final int oldSteps;
   final bool isLoading;
   final Future<void> Function() loadData;
-  final BuildContext parentContext; // Receive the context here
+  final BuildContext parentContext;
 
   const HomePageContent({
     super.key,
@@ -125,7 +158,7 @@ class HomePageContent extends StatelessWidget {
     required this.oldSteps,
     required this.isLoading,
     required this.loadData,
-    required this.parentContext, // And here
+    required this.parentContext,
   });
 
   @override
@@ -167,11 +200,9 @@ class HomePageContent extends StatelessWidget {
                     ),
                   ),
                 ),
-              // Use the provided GlobalKey
               _buildGauge(screenWidth, stepTracker, stepGaugeKey),
               _buildSummaryCards(stepTracker, dailyStreakKey, pointsEarnedKey),
               const SizedBox(height: 20),
-              // Pass the context here
               _buildClaimButton(stepTracker, screenWidth, parentContext),
               const SizedBox(height: 20),
               if (kDebugMode)
@@ -208,10 +239,9 @@ class HomePageContent extends StatelessWidget {
     );
   }
 
-  // Refactored to accept key
   Widget _buildGauge(double screenWidth, StepTracker tracker, GlobalKey key) {
     return SizedBox(
-      key: key, // Assign the key here
+      key: key,
       width: screenWidth * 0.65,
       height: screenWidth * 0.65,
       child: TweenAnimationBuilder<double>(
@@ -226,7 +256,6 @@ class HomePageContent extends StatelessWidget {
     );
   }
 
-  // Refactored to accept keys
   Widget _buildSummaryCards(StepTracker tracker, GlobalKey dailyKey, GlobalKey pointsKey) {
     return Row(
       children: [
@@ -243,10 +272,9 @@ class HomePageContent extends StatelessWidget {
     );
   }
 
-  // Refactored to accept key
   Widget _buildCard(IconData icon, String label, String value, GlobalKey key) {
     return Card(
-      key: key, // Assign the key here
+      key: key,
       elevation: 3,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       child: Padding(
@@ -267,7 +295,6 @@ class HomePageContent extends StatelessWidget {
     );
   }
 
-  // Refactored _buildClaimButton to accept context as a parameter
   Widget _buildClaimButton(StepTracker tracker, double width, BuildContext context) {
     final bool canClaim = tracker.dailyPointsEarned >= StepTracker.maxDailyPoints &&
         !tracker.hasClaimedToday;
@@ -289,7 +316,7 @@ class HomePageContent extends StatelessWidget {
             );
           }
         }
-            : null, // Disable the button
+            : null,
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.deepOrange,
           foregroundColor: Colors.white,
@@ -313,14 +340,13 @@ class HomePageContent extends StatelessWidget {
     );
   }
 
-  // Refactored to accept key
   Widget _buildEmulatorControls(BuildContext context, GlobalKey key) {
     final stepTracker = Provider.of<StepTracker>(context, listen: false);
     return Column(
       children: [
         const SizedBox(height: 10),
         ElevatedButton(
-          key: key, // Assign the key here
+          key: key,
           onPressed: () {
             stepTracker.addMockSteps(1000);
             ScaffoldMessenger.of(context).showSnackBar(
