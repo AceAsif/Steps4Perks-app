@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 
 class SignupPage extends StatefulWidget {
   const SignupPage({super.key});
@@ -10,104 +9,100 @@ class SignupPage extends StatefulWidget {
 }
 
 class _SignupPageState extends State<SignupPage> {
-  final _formKey = GlobalKey<FormState>();
-  final nameController = TextEditingController();
-  final emailController = TextEditingController();
-  final ageController = TextEditingController();
-  final passwordController = TextEditingController();
+  final TextEditingController emailController = TextEditingController();
+  final TextEditingController passwordController = TextEditingController();
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  bool _isLoading = false;
+  bool isLoading = false;
 
-  Future<void> _signup() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    setState(() => _isLoading = true);
-
+  Future<void> registerUser() async {
+    setState(() => isLoading = true);
     try {
-      final userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+      await _auth.createUserWithEmailAndPassword(
         email: emailController.text.trim(),
-        password: passwordController.text,
+        password: passwordController.text.trim(),
       );
-
-      final user = userCredential.user;
-      if (user != null) {
-        // Send verification email
-        await user.sendEmailVerification();
-
-        // Store user profile in Firestore
-        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-          'name': nameController.text.trim(),
-          'email': emailController.text.trim(),
-          'age': int.tryParse(ageController.text.trim()) ?? 0,
-          'totalPoints': 0,
-          'currentStreak': 0,
-          'lastClaimedDate': null,
-          'lastRedeemedDate': null,
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('🎉 Account created! Verify your email to continue.')),
-        );
-
-        Navigator.pop(context); // Go back to login
-      }
+      await _auth.currentUser?.sendEmailVerification();
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Verification email sent.")));
     } on FirebaseAuthException catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("❌ ${e.message}")));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message ?? 'Registration failed')));
     } finally {
-      setState(() => _isLoading = false);
+      setState(() => isLoading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Sign Up')),
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Form(
-          key: _formKey,
-          child: ListView(
-            children: [
-              const SizedBox(height: 20),
-              TextFormField(
-                controller: nameController,
-                decoration: const InputDecoration(labelText: 'Name'),
-                validator: (value) =>
-                value == null || value.isEmpty ? 'Name is required' : null,
+      backgroundColor: Colors.white,
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 60),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(child: Image.asset('assets/app_logo.png', height: 150)),
+
+            const SizedBox(height: 40),
+            Text("Sign up", style: theme.textTheme.headlineLarge?.copyWith(fontWeight: FontWeight.bold)),
+
+            const SizedBox(height: 12),
+            Text("Let's create your account and start earning rewards.",
+                style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey.shade600)),
+
+            const SizedBox(height: 24),
+            TextField(
+              controller: emailController,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(labelText: 'Email'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: passwordController,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: 'Password'),
+            ),
+            const SizedBox(height: 24),
+
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: registerUser,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: isLoading
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text("Create Account", style: TextStyle(color: Colors.white, fontSize: 16)),
               ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: emailController,
-                decoration: const InputDecoration(labelText: 'Email'),
-                validator: (value) =>
-                value == null || !value.contains('@') ? 'Enter a valid email' : null,
+            ),
+
+            const SizedBox(height: 20),
+
+            Center(
+              child: Text(
+                "By signing up, you agree to our Terms & Privacy.",
+                style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey.shade600),
               ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: ageController,
-                decoration: const InputDecoration(labelText: 'Age'),
-                keyboardType: TextInputType.number,
-                validator: (value) =>
-                value == null || int.tryParse(value) == null ? 'Enter a valid age' : null,
+            ),
+
+            const SizedBox(height: 12),
+
+            Center(
+              child: TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                },
+                child: const Text(
+                  "Already have an account? Log in",
+                  style: TextStyle(fontWeight: FontWeight.w500),
+                ),
               ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: passwordController,
-                obscureText: true,
-                decoration: const InputDecoration(labelText: 'Password'),
-                validator: (value) =>
-                value != null && value.length < 6 ? 'Password must be 6+ chars' : null,
-              ),
-              const SizedBox(height: 24),
-              ElevatedButton(
-                onPressed: _isLoading ? null : _signup,
-                child: _isLoading
-                    ? const CircularProgressIndicator()
-                    : const Text('Create Account'),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
