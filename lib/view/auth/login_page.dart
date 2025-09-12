@@ -133,7 +133,7 @@ class _LoginPageState extends State<LoginPage> {
 
             OutlinedButton.icon(
               onPressed: () async {
-                final result = await GoogleSignInService.signInWithGoogle();
+                final result = await GoogleAuthService().signInWithGoogle();
                 if (result == null) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text("Google Sign-In was cancelled or failed")),
