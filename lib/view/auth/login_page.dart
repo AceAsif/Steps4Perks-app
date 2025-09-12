@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:myapp/view/auth/signup_page.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:myapp/view/auth/forgot_password_page.dart';
-//import 'package:google_sign_in/google_sign_in.dart';
+
+import '../homepage.dart';
+import 'forgot_password_page.dart';
+import 'signup_page.dart';
+import 'package:myapp/services/google_signin.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -16,6 +18,12 @@ class _LoginPageState extends State<LoginPage> {
   final TextEditingController passwordController = TextEditingController();
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
+  // Required keys for HomePage
+  final GlobalKey stepGaugeKey = GlobalKey();
+  final GlobalKey dailyStreakKey = GlobalKey();
+  final GlobalKey pointsEarnedKey = GlobalKey();
+  final GlobalKey mockStepsKey = GlobalKey();
+
   bool isLoading = false;
 
   Future<void> loginUser() async {
@@ -25,29 +33,33 @@ class _LoginPageState extends State<LoginPage> {
         email: emailController.text.trim(),
         password: passwordController.text.trim(),
       );
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => HomePage(
+            stepGaugeKey: stepGaugeKey,
+            dailyStreakKey: dailyStreakKey,
+            pointsEarnedKey: pointsEarnedKey,
+            mockStepsKey: mockStepsKey,
+          ),
+        ),
+      );
     } on FirebaseAuthException catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message ?? 'Login failed')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message ?? 'Login failed')),
+      );
     } finally {
       setState(() => isLoading = false);
     }
   }
 
-  /*Future<void> signInWithGoogle() async {
-    try {
-      final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
-      if (googleUser == null) return;
-
-      final googleAuth = await googleUser.authentication;
-      final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
-
-      await _auth.signInWithCredential(credential);
-    } catch (e) {
-      debugPrint('Google sign-in error: $e');
-    }
-  }*/
+  @override
+  void dispose() {
+    emailController.dispose();
+    passwordController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -60,21 +72,20 @@ class _LoginPageState extends State<LoginPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // App Logo or Mascot
-            Center(
-              child: Image.asset(
-                'assets/app_logo.png',
-                height: 150,
-              ),
-            ),
+            Center(child: Image.asset('assets/app_logo.png', height: 150)),
+
             const SizedBox(height: 40),
+
             Text("Log in", style: theme.textTheme.headlineLarge?.copyWith(fontWeight: FontWeight.bold)),
 
             const SizedBox(height: 12),
-            Text("By logging in, you agree to our Terms of Use.",
-                style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey.shade600)),
+            Text(
+              "By logging in, you agree to our Terms of Use.",
+              style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey.shade600),
+            ),
 
             const SizedBox(height: 24),
+
             TextField(
               controller: emailController,
               keyboardType: TextInputType.emailAddress,
@@ -86,22 +97,19 @@ class _LoginPageState extends State<LoginPage> {
               obscureText: true,
               decoration: const InputDecoration(labelText: 'Password'),
             ),
+
             const SizedBox(height: 6),
+
             Align(
               alignment: Alignment.centerRight,
               child: TextButton(
                 onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const ForgotPasswordPage()),
-                  );
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const ForgotPasswordPage()));
                 },
-                child: const Text(
-                  "Forgot Password?",
-                  style: TextStyle(fontWeight: FontWeight.w500, color: Colors.orange),
-                ),
+                child: const Text("Forgot Password?", style: TextStyle(fontWeight: FontWeight.w500, color: Colors.orange)),
               ),
             ),
+
             const SizedBox(height: 24),
 
             SizedBox(
@@ -120,22 +128,46 @@ class _LoginPageState extends State<LoginPage> {
             ),
 
             const SizedBox(height: 20),
-            Row(children: const [Expanded(child: Divider()), Text(" OR "), Expanded(child: Divider())]),
+            Row(children: const [Expanded(child: Divider()), Text("  OR  "), Expanded(child: Divider())]),
+            const SizedBox(height: 16),
 
-            /*const SizedBox(height: 16),
             OutlinedButton.icon(
-              onPressed: signInWithGoogle,
+              onPressed: () async {
+                final result = await GoogleSignInService.signInWithGoogle();
+                if (result == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Google Sign-In was cancelled or failed")),
+                  );
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Signed in with Google")),
+                  );
+
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => HomePage(
+                        stepGaugeKey: stepGaugeKey,
+                        dailyStreakKey: dailyStreakKey,
+                        pointsEarnedKey: pointsEarnedKey,
+                        mockStepsKey: mockStepsKey,
+                      ),
+                    ),
+                  );
+                }
+              },
               icon: Image.asset('assets/google_icon.png', height: 24),
               label: const Text('Sign in with Google'),
               style: OutlinedButton.styleFrom(
                 minimumSize: const Size(double.infinity, 50),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
-            ),*/
+            ),
 
             const SizedBox(height: 10),
+
             OutlinedButton.icon(
-              onPressed: () {}, // Facebook login (optional)
+              onPressed: () {}, // TODO: Facebook login functionality
               icon: const Icon(Icons.facebook, color: Colors.blue),
               label: const Text('Sign in with Facebook'),
               style: OutlinedButton.styleFrom(
@@ -145,6 +177,7 @@ class _LoginPageState extends State<LoginPage> {
             ),
 
             const SizedBox(height: 30),
+
             Center(
               child: TextButton(
                 onPressed: () {
@@ -155,9 +188,12 @@ class _LoginPageState extends State<LoginPage> {
             ),
 
             const SizedBox(height: 8),
+
             Center(
-              child: Text("For more info, please see our Privacy Policy.",
-                  style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey.shade600)),
+              child: Text(
+                "For more info, please see our Privacy Policy.",
+                style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey.shade600),
+              ),
             ),
           ],
         ),

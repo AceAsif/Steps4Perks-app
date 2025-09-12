@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/gestures.dart';
 
 class SignupPage extends StatefulWidget {
   const SignupPage({super.key});
@@ -92,13 +93,26 @@ class _SignupPageState extends State<SignupPage> {
             const SizedBox(height: 12),
 
             Center(
-              child: TextButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                },
-                child: const Text(
-                  "Already have an account? Log in",
-                  style: TextStyle(fontWeight: FontWeight.w500),
+              child: RichText(
+                text: TextSpan(
+                  text: 'Already have an account? ',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Colors.grey[700],
+                    fontWeight: FontWeight.w400,
+                  ),
+                  children: [
+                    TextSpan(
+                      text: 'Log in',
+                      style: const TextStyle(
+                        color: Colors.orange,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      recognizer: TapGestureRecognizer()
+                        ..onTap = () {
+                          Navigator.pop(context); // Return to LoginPage
+                        },
+                    ),
+                  ],
                 ),
               ),
             ),
