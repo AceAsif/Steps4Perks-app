@@ -1,45 +1,47 @@
 import 'package:flutter/material.dart';
-import 'package:myapp/view/app_shell.dart';
 import 'package:provider/provider.dart';
-import 'package:myapp/features/step_tracker.dart';
-import 'package:myapp/features/profile_image_provider.dart';
-import 'package:myapp/theme/app_theme.dart';
-import 'package:myapp/services/notification_service.dart';
-import 'package:myapp/view/splash_screen.dart';
-import 'package:myapp/view/onboardingpage.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:timezone/data/latest.dart' as tz;
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:myapp/view/auth_page.dart'; // ✅ Added the import for AuthPage
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:timezone/data/latest.dart' as tz;
 
 import 'firebase_options.dart';
+import 'package:myapp/theme/app_theme.dart';
+import 'package:myapp/features/step_tracker.dart';
+import 'package:myapp/features/profile_image_provider.dart';
+import 'package:myapp/services/notification_service.dart';
+
+import 'package:myapp/view/splash_screen.dart';
+import 'package:myapp/view/onboardingpage.dart';
+import 'package:myapp/view/auth/login_page.dart';
+import 'package:myapp/view/auth/signup_page.dart';
+import 'package:myapp/features/bottomnavigation.dart'; // bottom nav home
 
 final NotificationService notificationService = NotificationService();
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  debugPrint("Handling a background message: ${message.messageId}");
+  debugPrint("🔔 Background message: ${message.messageId}");
 }
 
 @pragma('vm:entry-point')
 void onDidReceiveBackgroundNotificationResponse(NotificationResponse notificationResponse) {
-  debugPrint('🔔 Local Background Notification Tapped → Payload: ${notificationResponse.payload}');
+  debugPrint('🔔 Local Background Notification tapped → Payload: ${notificationResponse.payload}');
 }
 
 @pragma('vm:entry-point')
 void notificationTapBackground(NotificationResponse notificationResponse) {
-  debugPrint('Local Background notification tapped! Payload: ${notificationResponse.payload}');
+  debugPrint('🔔 Local Notification tapped! Payload: ${notificationResponse.payload}');
 }
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  debugPrint('✅ Firebase initialized for main app.');
+  debugPrint('✅ Firebase initialized.');
 
   final prefs = await SharedPreferences.getInstance();
   final onboardingComplete = prefs.getBool('onboardingComplete') ?? false;
@@ -48,14 +50,14 @@ void main() async {
     tz.initializeTimeZones();
     debugPrint('✅ Timezones initialized.');
   } catch (e) {
-    debugPrint('❌ Timezone initialization error: $e');
+    debugPrint('❌ Timezone init error: $e');
   }
 
   try {
     await notificationService.initialize();
     debugPrint('✅ NotificationService initialized.');
   } catch (e) {
-    debugPrint('❌ NotificationService initialization error: $e');
+    debugPrint('❌ NotificationService init error: $e');
   }
 
   runApp(
@@ -77,15 +79,21 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Steps4',
+      title: 'Steps4Perks',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
       home: AuthGate(onboardingComplete: onboardingComplete),
+      routes: {
+        '/login': (context) => const LoginPage(),
+        '/signup': (context) => const SignupPage(),
+        '/onboarding': (context) => const OnboardingPage(),
+        '/home': (context) => const Bottomnavigation(title: 'Steps4Perks'),
+      },
     );
   }
 }
 
-// A new widget to handle the authentication and onboarding logic
+// Handles Firebase auth and onboarding state
 class AuthGate extends StatelessWidget {
   final bool onboardingComplete;
   const AuthGate({super.key, required this.onboardingComplete});
@@ -95,25 +103,20 @@ class AuthGate extends StatelessWidget {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
-        // Show a loading screen while we wait for Firebase to initialize
+        // Still waiting for Firebase to initialise
         if (snapshot.connectionState == ConnectionState.waiting) {
-          // ✅ FIX: Pass the required onboardingComplete parameter
           return SplashScreen(onboardingComplete: onboardingComplete);
         }
 
-        // If the user is signed in (User object is not null)
+        // User is logged in
         if (snapshot.hasData) {
-          // If onboarding is complete, go to the main app page
-          if (onboardingComplete) {
-            return const AppShell();
-          } else {
-            // Otherwise, show the new onboarding screen
-            return const OnboardingPageNew();
-          }
-        } else {
-          // If the user is not signed in, show the AuthPage
-          return const AuthPage();
+          return onboardingComplete
+              ? const Bottomnavigation(title: 'Steps4Perks')
+              : const OnboardingPage();
         }
+
+        // User is not signed in
+        return const LoginPage(); // 👈 Show login screen by default
       },
     );
   }
