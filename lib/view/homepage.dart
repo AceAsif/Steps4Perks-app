@@ -8,9 +8,8 @@ import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:myapp/services/database_service.dart';
 
-// This is the parent widget that manages the state and provides keys for the tutorial.
+/// This is the parent widget that manages the state and provides keys for the tutorial.
 class HomePage extends StatefulWidget {
-  // Use GlobalKey to identify widgets for the tutorial overlay.
   final GlobalKey stepGaugeKey;
   final GlobalKey dailyStreakKey;
   final GlobalKey pointsEarnedKey;
@@ -31,66 +30,46 @@ class HomePage extends StatefulWidget {
 class HomePageState extends State<HomePage> {
   int _oldSteps = 0;
   bool _isLoading = true;
+  bool _hasLoadedData = false; // ✅ NEW: Prevent multiple loads
 
   @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        // If the user is signed in, build the homepage content
-        if (snapshot.hasData) {
-          final user = snapshot.data!;
-          return FutureBuilder<Map<String, dynamic>?>(
-            future: _loadData(user.uid),
-            builder: (context, dataSnapshot) {
-              if (dataSnapshot.connectionState == ConnectionState.waiting) {
-                return _buildShimmer(MediaQuery.of(context).size.height);
-              }
-
-              if (dataSnapshot.hasError) {
-                return Center(child: Text("Error loading data: ${dataSnapshot.error}"));
-              }
-
-              return HomePageContent(
-                stepGaugeKey: widget.stepGaugeKey,
-                dailyStreakKey: widget.dailyStreakKey,
-                pointsEarnedKey: widget.pointsEarnedKey,
-                mockStepsKey: widget.mockStepsKey,
-                oldSteps: _oldSteps,
-                isLoading: _isLoading,
-                loadData: () => _loadData(user.uid),
-                parentContext: context,
-              );
-            },
-          );
-        } else {
-          // If no user is signed in, show a simple message
-          return const Center(child: Text("Please sign in."));
-        }
-      },
-    );
+  void initState() {
+    super.initState();
+    // ✅ Load data once when widget is created
+    _loadInitialData();
   }
 
-  Future<Map<String, dynamic>?> _loadData(String userId) async {
+  /// ✅ NEW: Load data only once on initialization
+  Future<void> _loadInitialData() async {
+    if (_hasLoadedData) return; // Prevent multiple loads
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      await _loadData(user.uid);
+      _hasLoadedData = true;
+    }
+  }
+
+  /// Load user data from Firestore
+  Future<void> _loadData(String userId) async {
     final stepTracker = Provider.of<StepTracker>(context, listen: false);
     final today = DateFormat('yyyy-MM-dd').format(DateTime.now().toLocal());
 
     try {
-      // Use the correct method, which is `getDailyStatsOnce`.
       final data = await DatabaseService().getDailyStatsOnce(userId);
-      debugPrint(data != null ? "📦 Firestore data received" : "🚫 No data found for today");
+
+      debugPrint(data != null ? '✅ Firestore data received' : '🚫 No data found for today');
 
       if (data != null) {
-        debugPrint("👣 Steps: ${data['steps']}, 🔥 Streak: ${data['streak']}, 🎯 Daily Points: ${data['dailyPointsEarned']}");
+        debugPrint('Steps: ${data['steps']}, Streak: ${data['streak']}, Daily Points: ${data['dailyPointsEarned']}');
+
         stepTracker.setCurrentSteps(data['steps'] ?? 0);
+
         final int streakFromDb = (data['streak'] as int?) ?? 0;
-        if (streakFromDb > stepTracker.currentStreak) {
+        if (streakFromDb != stepTracker.currentStreak) {
           stepTracker.setCurrentStreak(streakFromDb);
         }
+
         stepTracker.setClaimedToday(data['claimedDailyBonus'] == true);
       } else {
         stepTracker.setCurrentSteps(0);
@@ -101,44 +80,65 @@ class HomePageState extends State<HomePage> {
         setState(() {
           _isLoading = false;
           _oldSteps = stepTracker.currentSteps;
-          debugPrint("✅ Data loading complete. isLoading = $_isLoading, _oldSteps = $_oldSteps");
         });
       }
-      return data;
+
+      debugPrint('✅ Data loading complete. isLoading = $_isLoading, _oldSteps = $_oldSteps');
     } catch (e, stackTrace) {
-      debugPrint('⚠️ Error loading data: $e');
+      debugPrint('❌ Error loading data: $e');
       debugPrint('Stack Trace: $stackTrace');
-      return null;
+
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
-  Widget _buildShimmer(double screenHeight) {
-    return ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      children: [
-        Shimmer.fromColors(
-          baseColor: Colors.grey[300]!,
-          highlightColor: Colors.grey[100]!,
-          child: Column(
-            children: List.generate(
-              3,
-                  (index) => Container(
-                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                height: 100,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
+  /// ✅ Refresh handler for pull-to-refresh
+  Future<void> _handleRefresh() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      setState(() {
+        _isLoading = true;
+      });
+      await _loadData(user.uid);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // ✅ Simplified: Just check auth state, no nested FutureBuilder
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        // If the user is signed in, show the content
+        if (snapshot.hasData) {
+          return HomePageContent(
+            stepGaugeKey: widget.stepGaugeKey,
+            dailyStreakKey: widget.dailyStreakKey,
+            pointsEarnedKey: widget.pointsEarnedKey,
+            mockStepsKey: widget.mockStepsKey,
+            oldSteps: _oldSteps,
+            isLoading: _isLoading,
+            onRefresh: _handleRefresh, // ✅ Pass refresh callback
+            parentContext: context,
+          );
+        } else {
+          // If no user is signed in
+          return const Center(child: Text('Please sign in.'));
+        }
+      },
     );
   }
 }
 
-// This widget is now the content part that only handles the UI.
+/// This widget handles the UI only
 class HomePageContent extends StatelessWidget {
   final GlobalKey stepGaugeKey;
   final GlobalKey dailyStreakKey;
@@ -146,7 +146,7 @@ class HomePageContent extends StatelessWidget {
   final GlobalKey mockStepsKey;
   final int oldSteps;
   final bool isLoading;
-  final Future<void> Function() loadData;
+  final Future<void> Function() onRefresh; // ✅ Changed to callback
   final BuildContext parentContext;
 
   const HomePageContent({
@@ -157,7 +157,7 @@ class HomePageContent extends StatelessWidget {
     required this.mockStepsKey,
     required this.oldSteps,
     required this.isLoading,
-    required this.loadData,
+    required this.onRefresh,
     required this.parentContext,
   });
 
@@ -169,9 +169,7 @@ class HomePageContent extends StatelessWidget {
 
     return SafeArea(
       child: RefreshIndicator(
-        onRefresh: () async {
-          await loadData();
-        },
+        onRefresh: onRefresh, // ✅ Use callback instead of calling loadData
         child: isLoading
             ? _buildShimmer(screenHeight)
             : SingleChildScrollView(
@@ -192,7 +190,7 @@ class HomePageContent extends StatelessWidget {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: const Text(
-                    '🧪 Debug Mode Active',
+                    'Debug Mode Active',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: Colors.deepPurple,
@@ -250,23 +248,33 @@ class HomePageContent extends StatelessWidget {
           end: tracker.currentSteps.toDouble(),
         ),
         duration: const Duration(milliseconds: 600),
-        builder: (context, value, child) =>
-            StepGauge(currentSteps: value.toInt()),
+        builder: (context, value, child) {
+          return StepGauge(currentSteps: value.toInt());
+        },
       ),
     );
   }
 
-  Widget _buildSummaryCards(StepTracker tracker, GlobalKey dailyKey, GlobalKey pointsKey) {
+  Widget _buildSummaryCards(
+      StepTracker tracker, GlobalKey dailyKey, GlobalKey pointsKey) {
     return Row(
       children: [
         Expanded(
           child: _buildCard(
-              Icons.local_fire_department, 'Daily Streak', '${tracker.currentStreak}', dailyKey),
+            Icons.local_fire_department,
+            'Daily Streak',
+            '${tracker.currentStreak}',
+            dailyKey,
+          ),
         ),
         const SizedBox(width: 12),
         Expanded(
-          child: _buildCard(Icons.monetization_on, 'Points Earned',
-              '${tracker.dailyPointsEarned} / ${StepTracker.maxDailyPoints}', pointsKey),
+          child: _buildCard(
+            Icons.monetization_on,
+            'Points Earned',
+            '${tracker.dailyPointsEarned}/${StepTracker.maxDailyPoints}',
+            pointsKey,
+          ),
         ),
       ],
     );
@@ -283,19 +291,23 @@ class HomePageContent extends StatelessWidget {
           children: [
             Icon(icon, size: 32, color: Colors.deepOrange),
             const SizedBox(height: 6),
-            Text(label,
-                style: const TextStyle(fontSize: 14, color: Colors.black54)),
+            Text(
+              label,
+              style: const TextStyle(fontSize: 14, color: Colors.black54),
+            ),
             const SizedBox(height: 4),
-            Text(value,
-                style: const TextStyle(
-                    fontSize: 20, fontWeight: FontWeight.bold)),
+            Text(
+              value,
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildClaimButton(StepTracker tracker, double width, BuildContext context) {
+  Widget _buildClaimButton(
+      StepTracker tracker, double width, BuildContext context) {
     final bool canClaim = tracker.dailyPointsEarned >= StepTracker.maxDailyPoints &&
         !tracker.hasClaimedToday;
 
@@ -306,13 +318,17 @@ class HomePageContent extends StatelessWidget {
             ? () async {
           await tracker.claimDailyBonusPoints();
           if (!context.mounted) return;
+
           if (tracker.hasClaimedToday) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('🎉 Claimed ${StepTracker.maxDailyPoints} Daily Points!')),
+              SnackBar(
+                  content:
+                  Text('✅ Claimed ${StepTracker.maxDailyPoints} Daily Points!')),
             );
           } else {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('😞 Failed to claim daily bonus points. Try again.')),
+              const SnackBar(
+                  content: Text('❌ Failed to claim daily bonus points. Try again.')),
             );
           }
         }
@@ -331,7 +347,7 @@ class HomePageContent extends StatelessWidget {
             Text(
               tracker.hasClaimedToday
                   ? '✅ ${StepTracker.maxDailyPoints} Points Claimed Today'
-                  : 'Claim ${StepTracker.maxDailyPoints} Points (Daily)',
+                  : 'Claim ${StepTracker.maxDailyPoints} Points Daily',
               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
           ],
@@ -342,6 +358,7 @@ class HomePageContent extends StatelessWidget {
 
   Widget _buildEmulatorControls(BuildContext context, GlobalKey key) {
     final stepTracker = Provider.of<StepTracker>(context, listen: false);
+
     return Column(
       children: [
         const SizedBox(height: 10),
@@ -356,12 +373,10 @@ class HomePageContent extends StatelessWidget {
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.blueGrey,
             foregroundColor: Colors.white,
-            padding:
-            const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
-          child: const Text('➕ Add 1000 Mock Steps (Debug Only)'),
+          child: const Text('Add 1000 Mock Steps (Debug Only)'),
         ),
         ElevatedButton(
           onPressed: () {
@@ -373,10 +388,8 @@ class HomePageContent extends StatelessWidget {
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.blueGrey,
             foregroundColor: Colors.white,
-            padding:
-            const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
           child: const Text('Reset mock steps to 0!'),
         ),
