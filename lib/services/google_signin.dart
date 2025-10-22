@@ -27,64 +27,39 @@ class GoogleAuthService {
   Future<Map<String, dynamic>?> signInWithGoogle() async {
     try {
       await _ensureInitialized();
+      print('🔵 Starting Google authentication...');
 
-      // Trigger the authentication flow
       final googleUser = await _googleSignIn.authenticate(
         scopeHint: ['email', 'profile'],
       );
 
-      // User canceled the sign-in
+      print('🔵 authenticate() returned: ${googleUser != null ? "SUCCESS" : "NULL"}');
+
       if (googleUser == null) {
-        print("Sign-in canceled by user");
+        print("❌ User canceled or authentication failed");
         return null;
       }
 
-      // Get authentication details
+      print('🔵 Got Google user: ${googleUser.email}');
+      print('🔵 Getting authentication details...');
+
       final googleAuth = googleUser.authentication;
+      print('🔵 ID Token: ${googleAuth.idToken != null ? "EXISTS" : "NULL"}');
+
       final authClient = googleUser.authorizationClient;
       final authorization = await authClient.authorizationForScopes([]);
+      print('🔵 Access Token: ${authorization?.accessToken != null ? "EXISTS" : "NULL"}');
 
-      // Create Firebase credential
-      final credential = GoogleAuthProvider.credential(
-        accessToken: authorization?.accessToken,
-        idToken: googleAuth.idToken,
-      );
-
-      // Sign in to Firebase with the Google credential
-      final userCredential =
-      await FirebaseAuth.instance.signInWithCredential(credential);
-
-      final user = userCredential.user;
-      if (user == null) return null;
-
-      // ✅ Check if this is a new user or existing user
-      final isNewUser = userCredential.additionalUserInfo?.isNewUser ?? false;
-
-      print("✅ Google Sign-in successful: ${user.email}");
-      print("📊 Is new user: $isNewUser");
-
-      // ✅ If existing user, check if profile is complete
-      if (!isNewUser) {
-        final hasCompleteProfile = await _checkProfileComplete(user.uid);
-        if (!hasCompleteProfile) {
-          print("⚠️ Existing user but profile incomplete");
-          return {'user': user, 'isNewUser': true}; // Treat as new
-        }
-      }
-
-      return {
-        'user': user,
-        'isNewUser': isNewUser,
-      };
-
+      // ... rest of your code
     } on GoogleSignInException catch (e) {
-      print("❌ GoogleSignInException: ${e.code}");
+      print("❌ GoogleSignInException: ${e.code} - ${e.toString()}");
       return null;
     } catch (e) {
       print("❌ Sign-in error: $e");
       return null;
     }
   }
+
 
   /// Check if user has a complete profile in Firestore
   Future<bool> _checkProfileComplete(String uid) async {
