@@ -42,7 +42,7 @@ dependencies:
   syncfusion_flutter_gauges: ^30.1.37
   # FL Chart is a highly customizable Flutter chart library 
   # that supports Line Chart, Bar Chart, Pie Chart, Scatter Chart, and Radar Chart. 
-  fl_chart: ^1.0.0
+  fl_chart: ^1.1.0
   # This plugin allows for continuous step counting and pedestrian status 
   # using the built-in pedometer sensor API of iOS and Android devices.
   pedometer: ^4.1.1
@@ -71,12 +71,11 @@ dependencies:
   # A Flutter plugin for accessing device information.
   device_info_plus: ^11.5.0
   # These are the Firebase database plugins
-  firebase_core: ^2.24.0
-  firebase_auth: ^4.16.0
-  firebase_storage: ^11.6.5
-  image_picker: ^1.1.2
-  cloud_firestore: ^4.13.1
-  firebase_messaging: ^14.7.4
+  firebase_core: ^4.2.0        # was 2.24.0
+  firebase_auth: ^6.1.1         # was 4.16.0 - THIS IS THE KEY FIX
+  firebase_storage: ^13.0.3     # was 11.6.5
+  cloud_firestore: ^6.0.3       # was 4.13.1
+  firebase_messaging: ^16.0.3   # was 14.7.4
   # This plugin enables Flutter applications to display ads from Google AdMob.
   #google_mobile_ads: ^6.0.0
   # shimmer is a Flutter package that provides a customizable shimmer effect widget, commonly used as a loading indicator for content.
@@ -143,3 +142,7 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+
+dependency_overrides:
+  vector_math: ^2.2.0
