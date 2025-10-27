@@ -25,8 +25,36 @@ class _ProfileCompletionPageState extends State<ProfileCompletionPage> {
   @override
   void initState() {
     super.initState();
-    // Pre-fill name from Google/Facebook if available
-    _nameController.text = widget.user.displayName ?? '';
+    // ✅ FIX 1: Load the name from Firestore, not from widget.user.displayName
+    _loadExistingProfile();
+  }
+
+  /// ✅ NEW: Load existing profile data from Firestore
+  Future<void> _loadExistingProfile() async {
+    try {
+      final profileData = await _dbService.getUserProfile();
+
+      if (mounted && profileData != null) {
+        setState(() {
+          // Load name from Firestore if it exists
+          _nameController.text = profileData['name'] ?? widget.user.displayName ?? '';
+
+          // Load age if it exists (for edit mode)
+          if (profileData['age'] != null) {
+            _ageController.text = profileData['age'].toString();
+          }
+        });
+      } else if (mounted) {
+        // Fallback to Google/Facebook display name if no Firestore data
+        _nameController.text = widget.user.displayName ?? '';
+      }
+    } catch (e) {
+      print('❌ Error loading profile: $e');
+      // Fallback to Google/Facebook display name
+      if (mounted) {
+        _nameController.text = widget.user.displayName ?? '';
+      }
+    }
   }
 
   @override
@@ -45,15 +73,15 @@ class _ProfileCompletionPageState extends State<ProfileCompletionPage> {
       final age = int.parse(_ageController.text.trim());
       final name = _nameController.text.trim();
 
-      // Create Firestore user document
+      // Create/Update Firestore user document
       await _dbService.createUserDocument(
         userUid: widget.user.uid,
         email: widget.user.email ?? '',
         age: age,
       );
 
-      // Update display name if changed
-      if (name.isNotEmpty && name != widget.user.displayName) {
+      // Update display name in both Firebase Auth and Firestore
+      if (name.isNotEmpty) {
         await widget.user.updateDisplayName(name);
         await _dbService.updateUserName(name);
       }
@@ -92,7 +120,7 @@ class _ProfileCompletionPageState extends State<ProfileCompletionPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Complete Your Profile'),
-        automaticallyImplyLeading: false, // Prevent back navigation
+        automaticallyImplyLeading: false,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
@@ -145,22 +173,22 @@ class _ProfileCompletionPageState extends State<ProfileCompletionPage> {
               ),
               const SizedBox(height: 16),
 
-              // Age field (required)
+              // ✅ FIX 2: Age field - Changed minimum age from 13 to 18
               TextFormField(
                 controller: _ageController,
                 keyboardType: TextInputType.number,
                 decoration: const InputDecoration(
                   labelText: 'Age',
                   prefixIcon: Icon(Icons.cake),
-                  hintText: 'Must be 13 or older',
+                  hintText: 'Must be 18 or older', // ✅ Updated hint text
                 ),
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
                     return 'Please enter your age';
                   }
                   final age = int.tryParse(value);
-                  if (age == null || age < 13 || age > 120) {
-                    return 'Please enter a valid age (13-120)';
+                  if (age == null || age < 18 || age > 120) { // ✅ Changed from 13 to 18
+                    return 'You must be at least 18 years old'; // ✅ Updated error message
                   }
                   return null;
                 },
