@@ -14,7 +14,7 @@ class ActivityPage extends StatefulWidget {
 }
 
 class _ActivityPageState extends State<ActivityPage> {
-  int selectedTabIndex = 0; // 0 = Weekly, 1 = Monthly
+  int selectedTabIndex = 0;
   final DatabaseService _databaseService = DatabaseService();
 
   Map<String, int> _weeklyData = {};
@@ -26,23 +26,21 @@ class _ActivityPageState extends State<ActivityPage> {
   DateTime? _lastUpdated;
   bool _hasError = false;
 
-  VoidCallback? _trackerListener; // ✅ listen for live updates
+  VoidCallback? _trackerListener;
 
   @override
   void initState() {
     super.initState();
     _fetchWeeklyData(showSnackbar: false);
 
-    // ✅ Add StepTracker listener after first frame to avoid context issues
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final tracker = Provider.of<StepTracker>(context, listen: false);
       _trackerListener = () {
-        // Refresh the visible tab when steps change
         if (!mounted) return;
         if (selectedTabIndex == 0) {
           _fetchWeeklyData(showSnackbar: false);
         } else {
-          _fetchMonthlyData();
+          _fetchMonthlyData(showSnackbar: false);
         }
       };
       tracker.addListener(_trackerListener!);
@@ -51,7 +49,6 @@ class _ActivityPageState extends State<ActivityPage> {
 
   @override
   void dispose() {
-    // ✅ Clean up listener
     if (_trackerListener != null) {
       final tracker = Provider.of<StepTracker>(context, listen: false);
       tracker.removeListener(_trackerListener!);
@@ -59,6 +56,7 @@ class _ActivityPageState extends State<ActivityPage> {
     super.dispose();
   }
 
+  /// ✅ Fetch weekly data with proper error handling
   Future<void> _fetchWeeklyData({bool showSnackbar = true}) async {
     setState(() {
       _isLoading = true;
@@ -90,7 +88,9 @@ class _ActivityPageState extends State<ActivityPage> {
       setState(() {
         _weeklyData = formattedData;
         _maxSteps = maxSteps;
-        _maxStepsDate = maxStepsDateFormatted;
+        _maxStepsDate = maxStepsDateFormatted.isEmpty
+            ? 'No steps recorded yet'
+            : maxStepsDateFormatted;
         _isLoading = false;
         _lastUpdated = DateTime.now();
       });
@@ -106,38 +106,72 @@ class _ActivityPageState extends State<ActivityPage> {
         _isLoading = false;
         _hasError = true;
       });
+
+      if (showSnackbar && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to load weekly data. Please try again.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
-  Future<void> _fetchMonthlyData() async {
+  /// ✅ Fetch monthly data with empty data handling
+  Future<void> _fetchMonthlyData({bool showSnackbar = true}) async {
     setState(() {
       _isLoading = true;
       _hasError = false;
     });
 
     try {
-      // ✅ Use server-side week-of-month aggregation as provided by DatabaseService
       final weekData = await _databaseService.getMonthlyStepData();
 
-      // Compute max week
+      // ✅ Handle empty or null monthly data
+      if (weekData.isEmpty || weekData.values.every((steps) => steps == 0)) {
+        setState(() {
+          _monthlyData = {
+            'Week 1': 0,
+            'Week 2': 0,
+            'Week 3': 0,
+            'Week 4': 0,
+          };
+          _maxSteps = 0;
+          _maxStepsDate = 'No steps recorded yet';
+          _isLoading = false;
+          _lastUpdated = DateTime.now();
+        });
+
+        if (showSnackbar && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No monthly data available yet. Keep tracking!'),
+            ),
+          );
+        }
+        return;
+      }
+
+      // ✅ Calculate max week
       int maxSteps = 0;
       String maxWeekLabel = '';
       for (final entry in weekData.entries) {
         if (entry.value > maxSteps) {
           maxSteps = entry.value;
-          maxWeekLabel = entry.key; // e.g., "Week 3"
+          maxWeekLabel = entry.key;
         }
       }
 
       setState(() {
-        _monthlyData = weekData;        // e.g., {Week 1: 12000, ...}
+        _monthlyData = weekData;
         _maxSteps = maxSteps;
-        _maxStepsDate = maxWeekLabel;   // show the week label under "Personal Record"
+        _maxStepsDate = maxWeekLabel.isEmpty ? 'No steps recorded yet' : maxWeekLabel;
         _isLoading = false;
         _lastUpdated = DateTime.now();
       });
 
-      if (mounted) {
+      if (showSnackbar && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Monthly data refreshed!')),
         );
@@ -148,6 +182,15 @@ class _ActivityPageState extends State<ActivityPage> {
         _isLoading = false;
         _hasError = true;
       });
+
+      if (showSnackbar && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to load monthly data. Please try again.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -166,11 +209,14 @@ class _ActivityPageState extends State<ActivityPage> {
         elevation: 0,
       ),
       body: RefreshIndicator(
-        onRefresh: selectedTabIndex == 0 ? _fetchWeeklyData : _fetchMonthlyData,
+        onRefresh: selectedTabIndex == 0
+            ? () => _fetchWeeklyData()
+            : () => _fetchMonthlyData(),
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           child: Column(
             children: [
+              // Tab buttons
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 30.0, vertical: 12.0),
                 child: Row(
@@ -181,17 +227,51 @@ class _ActivityPageState extends State<ActivityPage> {
                   ],
                 ),
               ),
+
+              // Content area
               if (_isLoading)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 20, horizontal: 16),
                   child: StepChartShimmer(),
                 )
               else if (_hasError)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 50.0),
-                  child: Text(
-                    'Failed to load chart. Please try again later.',
-                    style: TextStyle(color: Colors.redAccent),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 50.0, horizontal: 20.0),
+                  child: Column(
+                    children: [
+                      const Icon(Icons.error_outline, size: 64, color: Colors.redAccent),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Failed to load chart',
+                        style: TextStyle(
+                          color: Colors.redAccent,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Please check your internet connection and try again.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                      const SizedBox(height: 24),
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          if (selectedTabIndex == 0) {
+                            _fetchWeeklyData();
+                          } else {
+                            _fetchMonthlyData();
+                          }
+                        },
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Retry'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.deepPurple,
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
+                    ],
                   ),
                 )
               else if (selectedTabIndex == 0)
@@ -204,15 +284,17 @@ class _ActivityPageState extends State<ActivityPage> {
                   )
                 else
                   StepsBarChart(
-                    labels: _monthlyData.keys.toList(), // ["Week 1"..."Week 5"]
+                    labels: _monthlyData.keys.toList(),
                     stepValues: _monthlyData.values.map((e) => e.toDouble()).toList(),
                     dateRange: 'Activity for ${DateFormat('MMMM yyyy').format(DateTime.now())}',
                     maxSteps: _maxSteps,
-                    maxStepsDate: _maxStepsDate, // "Week X"
+                    maxStepsDate: _maxStepsDate,
                   ),
-              if (_lastUpdated != null)
+
+              // Last updated timestamp
+              if (_lastUpdated != null && !_hasError)
                 Padding(
-                  padding: const EdgeInsets.only(top: 10.0),
+                  padding: const EdgeInsets.only(top: 10.0, bottom: 20.0),
                   child: Text(
                     'Last updated: ${DateFormat('d MMM yyyy, h:mm a').format(_lastUpdated!)}',
                     style: TextStyle(color: Colors.grey[600], fontSize: 13),

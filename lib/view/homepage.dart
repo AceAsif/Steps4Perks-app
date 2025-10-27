@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:myapp/features/step_gauge.dart';
 import 'package:myapp/features/step_tracker.dart';
 import 'package:provider/provider.dart';
@@ -30,30 +29,28 @@ class HomePage extends StatefulWidget {
 class HomePageState extends State<HomePage> {
   int _oldSteps = 0;
   bool _isLoading = true;
-  bool _hasLoadedData = false; // ✅ NEW: Prevent multiple loads
 
   @override
   void initState() {
     super.initState();
-    // ✅ Load data once when widget is created
     _loadInitialData();
   }
 
-  /// ✅ NEW: Load data only once on initialization
+  /// ✅ Load data when page is first created
   Future<void> _loadInitialData() async {
-    if (_hasLoadedData) return; // Prevent multiple loads
-
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
       await _loadData(user.uid);
-      _hasLoadedData = true;
     }
   }
 
-  /// Load user data from Firestore
+  /// ✅ Reload data from Firestore
   Future<void> _loadData(String userId) async {
     final stepTracker = Provider.of<StepTracker>(context, listen: false);
-    final today = DateFormat('yyyy-MM-dd').format(DateTime.now().toLocal());
+
+    if (mounted) {
+      setState(() => _isLoading = true);
+    }
 
     try {
       final data = await DatabaseService().getDailyStatsOnce(userId);
@@ -61,7 +58,7 @@ class HomePageState extends State<HomePage> {
       debugPrint(data != null ? '✅ Firestore data received' : '🚫 No data found for today');
 
       if (data != null) {
-        debugPrint('Steps: ${data['steps']}, Streak: ${data['streak']}, Daily Points: ${data['dailyPointsEarned']}');
+        debugPrint('📊 Steps: ${data['steps']}, Streak: ${data['streak']}, Daily Points: ${data['dailyPointsEarned']}');
 
         stepTracker.setCurrentSteps(data['steps'] ?? 0);
 
@@ -89,27 +86,26 @@ class HomePageState extends State<HomePage> {
       debugPrint('Stack Trace: $stackTrace');
 
       if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
+        setState(() => _isLoading = false);
       }
+    }
+  }
+
+  /// ✅ Public method to refresh data (called from BottomNavigation)
+  Future<void> refreshData() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      await _loadData(user.uid);
     }
   }
 
   /// ✅ Refresh handler for pull-to-refresh
   Future<void> _handleRefresh() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      setState(() {
-        _isLoading = true;
-      });
-      await _loadData(user.uid);
-    }
+    await refreshData();
   }
 
   @override
   Widget build(BuildContext context) {
-    // ✅ Simplified: Just check auth state, no nested FutureBuilder
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
@@ -117,7 +113,6 @@ class HomePageState extends State<HomePage> {
           return const Center(child: CircularProgressIndicator());
         }
 
-        // If the user is signed in, show the content
         if (snapshot.hasData) {
           return HomePageContent(
             stepGaugeKey: widget.stepGaugeKey,
@@ -126,11 +121,10 @@ class HomePageState extends State<HomePage> {
             mockStepsKey: widget.mockStepsKey,
             oldSteps: _oldSteps,
             isLoading: _isLoading,
-            onRefresh: _handleRefresh, // ✅ Pass refresh callback
+            onRefresh: _handleRefresh,
             parentContext: context,
           );
         } else {
-          // If no user is signed in
           return const Center(child: Text('Please sign in.'));
         }
       },
@@ -138,7 +132,7 @@ class HomePageState extends State<HomePage> {
   }
 }
 
-/// This widget handles the UI only
+/// This widget handles the UI only - NO CustomTopBar or Scaffold here
 class HomePageContent extends StatelessWidget {
   final GlobalKey stepGaugeKey;
   final GlobalKey dailyStreakKey;
@@ -146,7 +140,7 @@ class HomePageContent extends StatelessWidget {
   final GlobalKey mockStepsKey;
   final int oldSteps;
   final bool isLoading;
-  final Future<void> Function() onRefresh; // ✅ Changed to callback
+  final Future<void> Function() onRefresh;
   final BuildContext parentContext;
 
   const HomePageContent({
@@ -167,15 +161,17 @@ class HomePageContent extends StatelessWidget {
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
 
+    // ✅ NO Scaffold or CustomTopBar - just return the content
     return SafeArea(
+      bottom: false, // Allow floating bottom nav
       child: RefreshIndicator(
-        onRefresh: onRefresh, // ✅ Use callback instead of calling loadData
+        onRefresh: onRefresh,
         child: isLoading
             ? _buildShimmer(screenHeight)
             : SingleChildScrollView(
           padding: EdgeInsets.symmetric(
             horizontal: screenWidth * 0.05,
-            vertical: screenHeight * 0.001,
+            vertical: screenHeight * 0.02,
           ),
           physics: const AlwaysScrollableScrollPhysics(),
           child: Column(
@@ -199,12 +195,13 @@ class HomePageContent extends StatelessWidget {
                   ),
                 ),
               _buildGauge(screenWidth, stepTracker, stepGaugeKey),
+              const SizedBox(height: 20),
               _buildSummaryCards(stepTracker, dailyStreakKey, pointsEarnedKey),
               const SizedBox(height: 20),
               _buildClaimButton(stepTracker, screenWidth, parentContext),
               const SizedBox(height: 20),
-              if (kDebugMode)
-                _buildEmulatorControls(context, mockStepsKey),
+              if (kDebugMode) _buildEmulatorControls(context, mockStepsKey),
+              const SizedBox(height: 100), // ✅ Extra space for floating nav bar
             ],
           ),
         ),
@@ -322,13 +319,15 @@ class HomePageContent extends StatelessWidget {
           if (tracker.hasClaimedToday) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                  content:
-                  Text('✅ Claimed ${StepTracker.maxDailyPoints} Daily Points!')),
+                content:
+                Text('✅ Claimed ${StepTracker.maxDailyPoints} Daily Points!'),
+              ),
             );
           } else {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                  content: Text('❌ Failed to claim daily bonus points. Try again.')),
+                content: Text('❌ Failed to claim daily bonus points. Try again.'),
+              ),
             );
           }
         }
@@ -378,6 +377,7 @@ class HomePageContent extends StatelessWidget {
           ),
           child: const Text('Add 1000 Mock Steps (Debug Only)'),
         ),
+        const SizedBox(height: 8),
         ElevatedButton(
           onPressed: () {
             stepTracker.resetMockSteps();
@@ -391,7 +391,7 @@ class HomePageContent extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
-          child: const Text('Reset mock steps to 0!'),
+          child: const Text('Reset Mock Steps to 0!'),
         ),
       ],
     );
