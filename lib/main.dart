@@ -17,7 +17,7 @@ import 'package:myapp/view/splash_screen.dart';
 import 'package:myapp/view/onboardingpage.dart';
 import 'package:myapp/view/auth/login_page.dart';
 import 'package:myapp/view/auth/signup_page.dart';
-import 'package:myapp/features/bottomnavigation.dart'; // bottom nav home
+import 'package:myapp/features/bottomnavigation.dart';
 
 final NotificationService notificationService = NotificationService();
 
@@ -93,7 +93,8 @@ class MyApp extends StatelessWidget {
   }
 }
 
-// Handles Firebase auth and onboarding state
+/// ✅ UPDATED: Handles Firebase auth and onboarding state
+/// Now always shows LoginPage when user is logged out
 class AuthGate extends StatelessWidget {
   final bool onboardingComplete;
   const AuthGate({super.key, required this.onboardingComplete});
@@ -103,7 +104,7 @@ class AuthGate extends StatelessWidget {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
-        // Still waiting for Firebase to initialise
+        // Still waiting for Firebase to initialize
         if (snapshot.connectionState == ConnectionState.waiting) {
           return SplashScreen(onboardingComplete: onboardingComplete);
         }
@@ -115,8 +116,9 @@ class AuthGate extends StatelessWidget {
               : const OnboardingPage();
         }
 
-        // User is not signed in
-        return const LoginPage(); // 👈 Show login screen by default
+        // ✅ User is not signed in → ALWAYS show LoginPage
+        // This ensures logout always takes you to login page
+        return const LoginPage();
       },
     );
   }

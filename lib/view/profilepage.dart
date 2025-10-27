@@ -6,6 +6,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:myapp/services/notification_service.dart';
 import 'package:myapp/services/database_service.dart';
+import 'package:myapp/services/google_signin.dart'; // ✅ Added for logout
 import 'package:myapp/widgets/loading_dialog.dart';
 import 'package:myapp/widgets/profile_specific/options_tile.dart';
 import 'package:myapp/widgets/profile_specific/disable_notification_dialog.dart';
@@ -24,7 +25,6 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
   bool _isPermissionPermanentlyDenied = false;
   late AndroidDeviceInfo _androidInfo;
   final DatabaseService _databaseService = DatabaseService();
-
   String _name = "Asif";
   String _email = "asif@gmail.com";
 
@@ -84,8 +84,14 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
           decoration: const InputDecoration(labelText: "Enter your name"),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(null), child: const Text("Cancel")),
-          TextButton(onPressed: () => Navigator.of(ctx).pop(controller.text.trim()), child: const Text("Save")),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(null),
+            child: const Text("Cancel"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
+            child: const Text("Save"),
+          ),
         ],
       ),
     );
@@ -94,16 +100,39 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
       await _databaseService.updateUserName(newName);
       setState(() => _name = newName);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("✅ Name updated successfully!")));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("✅ Name updated successfully!")),
+        );
       }
     }
   }
 
   Future<void> _scheduleDailyNotifications() async {
     final notificationService = NotificationService();
-    await notificationService.scheduleNotification(id: 1, title: '☀️ Morning Motivation', body: 'Start your day right! Go for a short walk and earn some perks.', hour: 9, minute: 0, scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle);
-    await notificationService.scheduleNotification(id: 2, title: '🍽️ Lunchtime Steps', body: 'Take a break and get a few steps in before you get back to work!', hour: 13, minute: 0, scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle);
-    await notificationService.scheduleNotification(id: 3, title: '🌙 Night Walk Reminder', body: 'Time to go for a night walk and relax!', hour: 19, minute: 0, scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle);
+    await notificationService.scheduleNotification(
+      id: 1,
+      title: '☀️ Morning Motivation',
+      body: 'Start your day right! Go for a short walk and earn some perks.',
+      hour: 9,
+      minute: 0,
+      scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+    );
+    await notificationService.scheduleNotification(
+      id: 2,
+      title: '🍽️ Lunchtime Steps',
+      body: 'Take a break and get a few steps in before you get back to work!',
+      hour: 13,
+      minute: 0,
+      scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+    );
+    await notificationService.scheduleNotification(
+      id: 3,
+      title: '🌙 Night Walk Reminder',
+      body: 'Time to go for a night walk and relax!',
+      hour: 19,
+      minute: 0,
+      scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+    );
   }
 
   Future<void> _toggleNotifications(bool newValue) async {
@@ -134,14 +163,96 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
     );
 
     final success = await _databaseService.manualSync();
-
     if (context.mounted) Navigator.of(context).pop();
 
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(success ? '✅ Data synced successfully!' : '❌ Sync failed. Please try again.'),
-        backgroundColor: success ? Colors.green : Colors.red,
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            success
+                ? '✅ Data synced successfully!'
+                : '❌ Sync failed. Please try again.',
+          ),
+          backgroundColor: success ? Colors.green : Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// ✅ NEW: Handles user logout
+  Future<void> _handleLogout() async {
+    // Show confirmation dialog
+    final shouldLogout = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Log Out"),
+        content: const Text("Are you sure you want to log out?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text("Cancel"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text("Log Out"),
+          ),
+        ],
+      ),
+    );
+
+    // If user confirmed, proceed with logout
+    if (shouldLogout == true) {
+      // Show loading dialog
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (BuildContext context) {
+            return const LoadingDialog(message: 'Logging out...');
+          },
+        );
+      }
+
+      try {
+        // Sign out from Google and Firebase
+        final googleAuthService = GoogleAuthService();
+        await googleAuthService.signOut();
+
+        // Close loading dialog
+        if (mounted) Navigator.of(context).pop();
+
+        // Navigate to onboarding page and remove all previous routes
+        if (mounted) {
+          Navigator.of(context).pushNamedAndRemoveUntil(
+            '/login', // ✅ Goes to login page
+                (route) => false,
+          );
+        }
+
+        // Show success message
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ Logged out successfully!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } catch (e) {
+        // Close loading dialog
+        if (mounted) Navigator.of(context).pop();
+
+        // Show error message
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('❌ Logout failed: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
     }
   }
 
@@ -155,14 +266,19 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
           children: [
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 12),
-              child: Text("Choose Profile Image", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              child: Text(
+                "Choose Profile Image",
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
             ),
             Expanded(
               child: GridView.builder(
                 itemCount: _profileImages.length,
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 3, crossAxisSpacing: 12, mainAxisSpacing: 12,
+                  crossAxisCount: 3,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
                 ),
                 itemBuilder: (context, index) {
                   return GestureDetector(
@@ -197,53 +313,94 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
 
     return SafeArea(
       child: SingleChildScrollView(
-        padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.07, vertical: screenHeight * 0.04),
+        padding: EdgeInsets.symmetric(
+          horizontal: screenWidth * 0.07,
+          vertical: screenHeight * 0.04,
+        ),
         child: Column(
           children: [
+            // Profile Image
             GestureDetector(
               onTap: _showProfileImagePicker,
               child: CircleAvatar(
                 radius: screenWidth * 0.12,
-                backgroundImage: AssetImage(_profileImages[imageProvider.selectedImageIndex]),
+                backgroundImage:
+                AssetImage(_profileImages[imageProvider.selectedImageIndex]),
               ),
             ),
             const SizedBox(height: 8),
-            Text("Tap image to change", style: TextStyle(fontSize: screenWidth * 0.035, color: Colors.grey)),
+            Text(
+              "Tap image to change",
+              style: TextStyle(fontSize: screenWidth * 0.035, color: Colors.grey),
+            ),
             SizedBox(height: screenHeight * 0.02),
+
+            // Name and Email
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(_name, style: TextStyle(fontSize: screenWidth * 0.06, fontWeight: FontWeight.bold, color: bodyTextColor)),
-                IconButton(icon: const Icon(Icons.edit, size: 20), onPressed: _editName),
+                Text(
+                  _name,
+                  style: TextStyle(
+                    fontSize: screenWidth * 0.06,
+                    fontWeight: FontWeight.bold,
+                    color: bodyTextColor,
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.edit, size: 20),
+                  onPressed: _editName,
+                ),
               ],
             ),
-            Text(_email, style: TextStyle(fontSize: screenWidth * 0.045, color: subtitleColor)),
+            Text(
+              _email,
+              style: TextStyle(fontSize: screenWidth * 0.045, color: subtitleColor),
+            ),
             SizedBox(height: screenHeight * 0.04),
+
+            // App Settings Section
             _buildSectionTitle('App Settings', bodyTextColor),
             OptionTile(
               icon: Icons.notifications,
               label: 'Enable Notifications',
-              trailing: Switch(value: _notificationsEnabled, onChanged: _toggleNotifications, activeColor: Theme.of(context).colorScheme.primary),
+              trailing: Switch(
+                value: _notificationsEnabled,
+                onChanged: _toggleNotifications,
+                activeColor: Theme.of(context).colorScheme.primary,
+              ),
               onTap: () => _toggleNotifications(!_notificationsEnabled),
             ),
             if (!_notificationsEnabled && _isPermissionPermanentlyDenied)
               _buildBlockedNotificationButton(screenHeight, screenWidth),
             SizedBox(height: screenHeight * 0.04),
+
+            // General Section
             _buildSectionTitle('General', bodyTextColor),
             OptionTile(icon: Icons.sync, label: 'Sync Data', onTap: _handleManualSync),
             OptionTile(icon: Icons.star, label: 'Referral Boosters', onTap: () {}),
             OptionTile(icon: Icons.mail_outline, label: 'Contact Support', onTap: () {}),
             OptionTile(icon: Icons.info_outline, label: 'About Steps4Perks', onTap: () {}),
             SizedBox(height: screenHeight * 0.025),
+
+            // ✅ UPDATED: Log Out Button with functionality
             ElevatedButton(
-              onPressed: () {},
+              onPressed: _handleLogout, // ✅ Now calls logout function
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.black,
                 foregroundColor: Colors.white,
-                padding: EdgeInsets.symmetric(vertical: screenHeight * 0.015, horizontal: screenWidth * 0.05),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                padding: EdgeInsets.symmetric(
+                  vertical: screenHeight * 0.015,
+                  horizontal: screenWidth * 0.05,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
               ),
-              child: Text('Log Out', style: TextStyle(fontSize: screenWidth * 0.045)),
+              child: Text(
+                'Log Out',
+                style: TextStyle(fontSize: screenWidth * 0.045),
+              ),
             ),
           ],
         ),
@@ -275,10 +432,18 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
         style: ElevatedButton.styleFrom(
           backgroundColor: Theme.of(context).colorScheme.error,
           foregroundColor: Colors.white,
-          padding: EdgeInsets.symmetric(vertical: screenHeight * 0.015, horizontal: screenWidth * 0.04),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          padding: EdgeInsets.symmetric(
+            vertical: screenHeight * 0.015,
+            horizontal: screenWidth * 0.04,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
         ),
-        child: Text("Notifications Blocked? Fix in App Settings", style: TextStyle(fontSize: screenWidth * 0.04)),
+        child: Text(
+          "Notifications Blocked? Fix in App Settings",
+          style: TextStyle(fontSize: screenWidth * 0.04),
+        ),
       ),
     );
   }
