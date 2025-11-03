@@ -13,10 +13,14 @@ import 'package:myapp/features/step_tracker.dart';
 import 'package:myapp/features/profile_image_provider.dart';
 import 'package:myapp/services/notification_service.dart';
 
-import 'package:myapp/view/splash_screen.dart';
+// 🟢 NOTE: SplashScreen import is no longer needed here,
+// as we are bypassing it to fix the loop.
+// import 'package:myapp/view/splash_screen.dart';
 import 'package:myapp/view/onboardingpage.dart';
 import 'package:myapp/view/auth/login_page.dart';
 import 'package:myapp/view/auth/signup_page.dart';
+// 🟢 ADD THIS IMPORT for your new verification page
+import 'package:myapp/view/auth/verification_page.dart';
 import 'package:myapp/features/bottomnavigation.dart';
 
 final NotificationService notificationService = NotificationService();
@@ -88,13 +92,14 @@ class MyApp extends StatelessWidget {
         '/signup': (context) => const SignupPage(),
         '/onboarding': (context) => const OnboardingPage(),
         '/home': (context) => const Bottomnavigation(title: 'Steps4Perks'),
+        // 🟢 You might want to add a route for your verification page too
+        '/verify': (context) => const VerificationPage(),
       },
     );
   }
 }
 
-/// ✅ UPDATED: Handles Firebase auth and onboarding state
-/// Now always shows LoginPage when user is logged out
+/// ✅ UPDATED: Now handles email verification AND onboarding
 class AuthGate extends StatelessWidget {
   final bool onboardingComplete;
   const AuthGate({super.key, required this.onboardingComplete});
@@ -106,18 +111,30 @@ class AuthGate extends StatelessWidget {
       builder: (context, snapshot) {
         // Still waiting for Firebase to initialize
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return SplashScreen(onboardingComplete: onboardingComplete);
+          return const Scaffold(
+            body: Center(
+              child: CircularProgressIndicator(),
+            ),
+          );
         }
 
         // User is logged in
         if (snapshot.hasData) {
-          return onboardingComplete
-              ? const Bottomnavigation(title: 'Steps4Perks')
-              : const OnboardingPage();
+          final user = snapshot.data!;
+
+          // 🟢 1. Check if the user's email is verified
+          if (user.emailVerified) {
+            // 🟢 2. Email is verified, now check onboarding status
+            return onboardingComplete
+                ? const Bottomnavigation(title: 'Steps4Perks')
+                : const OnboardingPage();
+          } else {
+            // 🟢 3. Email is NOT verified, force user to verification page
+            return const VerificationPage();
+          }
         }
 
-        // ✅ User is not signed in → ALWAYS show LoginPage
-        // This ensures logout always takes you to login page
+        // User is not signed in
         return const LoginPage();
       },
     );

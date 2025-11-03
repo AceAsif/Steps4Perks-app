@@ -6,12 +6,13 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:myapp/services/notification_service.dart';
 import 'package:myapp/services/database_service.dart';
-import 'package:myapp/services/google_signin.dart'; // ✅ Added for logout
+import 'package:myapp/services/google_signin.dart';
 import 'package:myapp/widgets/loading_dialog.dart';
 import 'package:myapp/widgets/profile_specific/options_tile.dart';
 import 'package:myapp/widgets/profile_specific/disable_notification_dialog.dart';
 import 'package:myapp/widgets/profile_specific/notification_settings_dialog.dart';
 import 'package:myapp/features/profile_image_provider.dart';
+import 'package:myapp/view/auth/login_page.dart'; // 🟢 1. ADD THIS IMPORT (adjust path if needed)
 
 class ProfilePageContent extends StatefulWidget {
   const ProfilePageContent({super.key});
@@ -179,7 +180,7 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
     }
   }
 
-  /// ✅ NEW: Handles user logout
+  /// ✅ UPDATED: Handles user logout correctly
   Future<void> _handleLogout() async {
     // Show confirmation dialog
     final shouldLogout = await showDialog<bool>(
@@ -222,10 +223,14 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
         // Close loading dialog
         if (mounted) Navigator.of(context).pop();
 
-        // Navigate to onboarding page and remove all previous routes
+        // 🟢 2. FIX: Navigate to LoginPage directly using MaterialPageRoute
+        // This avoids the black screen by not using a named route
+        // that may not exist.
         if (mounted) {
-          Navigator.of(context).pushNamedAndRemoveUntil(
-            '/login', // ✅ Goes to login page
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(
+              builder: (context) => const LoginPage(),
+            ),
                 (route) => false,
           );
         }
@@ -383,9 +388,9 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
             OptionTile(icon: Icons.info_outline, label: 'About Steps4Perks', onTap: () {}),
             SizedBox(height: screenHeight * 0.025),
 
-            // ✅ UPDATED: Log Out Button with functionality
+            // Log Out Button
             ElevatedButton(
-              onPressed: _handleLogout, // ✅ Now calls logout function
+              onPressed: _handleLogout,
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.black,
                 foregroundColor: Colors.white,

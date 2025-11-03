@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/gestures.dart';
 import 'package:myapp/services/database_service.dart';
-import 'package:myapp/features/bottomnavigation.dart';
+// 🟢 REMOVED this import as we no longer navigate directly to home
+// import 'package:myapp/features/bottomnavigation.dart';
+// 🟢 ADDED this import for the new verification page
+import 'package:myapp/view/auth/verification_page.dart'; // 👈 Make sure you create this file
 
 class SignupPage extends StatefulWidget {
   const SignupPage({super.key});
@@ -14,10 +17,10 @@ class SignupPage extends StatefulWidget {
 class _SignupPageState extends State<SignupPage> {
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
-  final TextEditingController nameController = TextEditingController(); // ✅ NEW
-  final TextEditingController ageController = TextEditingController(); // ✅ NEW
+  final TextEditingController nameController = TextEditingController();
+  final TextEditingController ageController = TextEditingController();
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final DatabaseService _dbService = DatabaseService(); // ✅ NEW
+  final DatabaseService _dbService = DatabaseService();
   bool isLoading = false;
 
   @override
@@ -53,9 +56,9 @@ class _SignupPageState extends State<SignupPage> {
     }
 
     final age = int.tryParse(ageController.text.trim());
-    if (age == null || age < 13 || age > 120) {
+    if (age == null || age < 18 || age > 120) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a valid age (13-120)')),
+        const SnackBar(content: Text('Please enter a valid age (18-120)')),
       );
       return;
     }
@@ -76,7 +79,7 @@ class _SignupPageState extends State<SignupPage> {
 
       print('✅ Firebase Auth user created: ${user.uid}');
 
-      // Step 2: Create Firestore user document with all required fields
+      // Step 2: Create Firestore user document
       await _dbService.createUserDocument(
         userUid: user.uid,
         email: emailController.text.trim(),
@@ -87,10 +90,7 @@ class _SignupPageState extends State<SignupPage> {
 
       // Step 3: Update display name
       await user.updateDisplayName(nameController.text.trim());
-
-      // Update name in Firestore
       await _dbService.updateUserName(nameController.text.trim());
-
       print('✅ Display name set to: ${nameController.text.trim()}');
 
       // Step 4: Send email verification
@@ -98,7 +98,7 @@ class _SignupPageState extends State<SignupPage> {
 
       if (!mounted) return;
 
-      // Step 5: Navigate to home page
+      // Step 5: Navigate to verification page
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('✅ Account created! Verification email sent.'),
@@ -106,12 +106,14 @@ class _SignupPageState extends State<SignupPage> {
         ),
       );
 
-      // Navigate to bottom navigation (home page)
-      Navigator.pushReplacement(
+      // 🟢 FIX: Navigate to the VerificationPage and remove all previous routes.
+      // This stops the app from bypassing the verification and onboarding steps.
+      Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(
-          builder: (_) => const Bottomnavigation(title: 'Steps4Perks'),
+          builder: (context) => const VerificationPage(),
         ),
+            (route) => false, // This removes login/signup from the navigation stack
       );
 
     } on FirebaseAuthException catch (e) {
@@ -169,8 +171,6 @@ class _SignupPageState extends State<SignupPage> {
               style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey.shade600),
             ),
             const SizedBox(height: 24),
-
-            // ✅ NEW: Name field
             TextField(
               controller: nameController,
               decoration: const InputDecoration(
@@ -179,8 +179,6 @@ class _SignupPageState extends State<SignupPage> {
               ),
             ),
             const SizedBox(height: 12),
-
-            // Email field
             TextField(
               controller: emailController,
               keyboardType: TextInputType.emailAddress,
@@ -190,20 +188,16 @@ class _SignupPageState extends State<SignupPage> {
               ),
             ),
             const SizedBox(height: 12),
-
-            // ✅ NEW: Age field
             TextField(
               controller: ageController,
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(
                 labelText: 'Age',
                 prefixIcon: Icon(Icons.cake),
-                hintText: 'Must be 13 or older',
+                hintText: 'Must be 18 or older',
               ),
             ),
             const SizedBox(height: 12),
-
-            // Password field
             TextField(
               controller: passwordController,
               obscureText: true,
@@ -214,8 +208,6 @@ class _SignupPageState extends State<SignupPage> {
               ),
             ),
             const SizedBox(height: 24),
-
-            // Create Account button
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
@@ -234,7 +226,6 @@ class _SignupPageState extends State<SignupPage> {
               ),
             ),
             const SizedBox(height: 20),
-
             Center(
               child: Text(
                 "By signing up, you agree to our Terms & Privacy.",
@@ -242,7 +233,6 @@ class _SignupPageState extends State<SignupPage> {
               ),
             ),
             const SizedBox(height: 12),
-
             Center(
               child: RichText(
                 text: TextSpan(
