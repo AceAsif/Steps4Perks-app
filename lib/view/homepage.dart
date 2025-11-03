@@ -26,9 +26,14 @@ class HomePage extends StatefulWidget {
   HomePageState createState() => HomePageState();
 }
 
-class HomePageState extends State<HomePage> {
+// 🟢 IMPROVEMENT 1: Mix in AutomaticKeepAliveClientMixin
+class HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin {
   int _oldSteps = 0;
   bool _isLoading = true;
+
+  // 🟢 IMPROVEMENT 2: Add the wantKeepAlive getter
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -69,7 +74,13 @@ class HomePageState extends State<HomePage> {
 
         stepTracker.setClaimedToday(data['claimedDailyBonus'] == true);
       } else {
-        stepTracker.setCurrentSteps(0);
+        // 🟢 FIX: This block is entered when no data is in Firestore for today.
+        // We MUST NOT reset the live steps to 0, as the StepTracker
+        // already has the correct live count from the pedometer.
+        //
+        // stepTracker.setCurrentSteps(0); // <--- THIS LINE WAS THE BUG & IS NOW REMOVED.
+
+        // We only need to ensure the claimed status is false if no data exists.
         stepTracker.setClaimedToday(false);
       }
 
@@ -106,6 +117,9 @@ class HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    // 🟢 IMPROVEMENT 3: Add super.build(context) for the mixin
+    super.build(context);
+
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
