@@ -1,11 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:myapp/services/notification_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-// 🟢 ADDED: Import for DatabaseService
 import 'package:myapp/services/database_service.dart';
-// 🟢 NOTE: These timezone imports aren't used in this file, but are harmless
-import 'package:timezone/timezone.dart' as tz;
-import 'package:timezone/data/latest.dart' as tz;
 
 class OnboardingPage extends StatefulWidget {
   const OnboardingPage({super.key});
@@ -47,7 +43,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
                 description: 'Earn points for every step and redeem them for amazing perks.',
                 image: Icons.card_giftcard,
               ),
-              // 🟢 NOTE: This page now handles all "finish" logic
+              // 🟢 This page handles all "finish" logic
               NotificationOnboardingScreen(),
             ],
           ),
@@ -61,7 +57,10 @@ class _OnboardingPageState extends State<OnboardingPage> {
                   // Use Opacity to keep the dot indicators centered
                   Opacity(
                     opacity: 0.0,
-                    child: TextButton(onPressed: null, child: Text(_currentPage == 0 ? '' : 'Back')),
+                    child: TextButton(
+                      onPressed: null,
+                      child: Text(_currentPage == 0 ? '' : 'Back'),
+                    ),
                   ),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -83,8 +82,6 @@ class _OnboardingPageState extends State<OnboardingPage> {
                         ),
                       ),
                     ),
-                  // 🟢 REMOVED: The "Done" button is no longer here.
-                  // This prevents two "done" buttons on the last page.
                   if (_currentPage == 2)
                     SizedBox(width: 80), // Placeholder to keep dots centered
                 ],
@@ -103,7 +100,9 @@ class _OnboardingPageState extends State<OnboardingPage> {
       height: 8.0,
       width: _currentPage == index ? 24.0 : 8.0,
       decoration: BoxDecoration(
-        color: _currentPage == index ? Theme.of(context).colorScheme.primary : Colors.grey,
+        color: _currentPage == index
+            ? Theme.of(context).colorScheme.primary
+            : Colors.grey,
         borderRadius: BorderRadius.circular(12),
       ),
     );
@@ -129,7 +128,9 @@ class OnboardingScreen extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(image, size: 100, color: Theme.of(context).colorScheme.primary),
+          Icon(image,
+              size: 100,
+              color: Theme.of(context).colorScheme.primary),
           const SizedBox(height: 20),
           Text(
             title,
@@ -150,65 +151,126 @@ class OnboardingScreen extends StatelessWidget {
   }
 }
 
-class NotificationOnboardingScreen extends StatelessWidget {
+class NotificationOnboardingScreen extends StatefulWidget {
   const NotificationOnboardingScreen({super.key});
 
+  @override
+  State<NotificationOnboardingScreen> createState() =>
+      _NotificationOnboardingScreenState();
+}
+
+class _NotificationOnboardingScreenState
+    extends State<NotificationOnboardingScreen> {
+  bool _isLoading = false;
+
+  // 🟢 FIXED: Schedule notifications with proper error handling
   Future<void> _scheduleDailyNotifications() async {
-    final notificationService = NotificationService();
-    // ... (scheduling logic is unchanged) ...
-    await notificationService.scheduleNotification(
-      id: 1,
-      title: '☀️ Morning Motivation',
-      body: 'Start your day right! Go for a short walk and earn some perks.',
-      hour: 9,
-      minute: 0,
-      scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-    );
-    await notificationService.scheduleNotification(
-      id: 2,
-      title: '🍽️ Lunchtime Steps',
-      body: 'Take a break and get a few steps in before you get back to work!',
-      hour: 13,
-      minute: 0,
-      scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-    );
-    await notificationService.scheduleNotification(
-      id: 3,
-      title: '🌙 Night Walk Reminder',
-      body: 'Time to go for a night walk and relax!',
-      hour: 18,
-      minute: 0,
-      scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-    );
+    try {
+      final notificationService = NotificationService();
+
+      await notificationService.scheduleNotification(
+        id: 1,
+        title: '☀️ Morning Motivation',
+        body: 'Start your day right! Go for a short walk and earn some perks.',
+        hour: 9,
+        minute: 0,
+        scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      );
+
+      await notificationService.scheduleNotification(
+        id: 2,
+        title: '🍽️ Lunchtime Steps',
+        body: 'Take a break and get a few steps in before you get back to work!',
+        hour: 13,
+        minute: 0,
+        scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      );
+
+      await notificationService.scheduleNotification(
+        id: 3,
+        title: '🌙 Night Walk Reminder',
+        body: 'Time to go for a night walk and relax!',
+        hour: 18,
+        minute: 0,
+        scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      );
+
+      debugPrint('✅ All notifications scheduled successfully');
+    } catch (e, stack) {
+      debugPrint('❌ Error scheduling notifications: $e');
+      debugPrint('Stack trace: $stack');
+    }
   }
 
-  // 🟢 REFACTORED: This is the main fix
-  void _onContinue(BuildContext context, bool enableNotifications) async {
-    // Show a loading dialog so the user knows something is happening
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) {
-        return const Center(child: CircularProgressIndicator());
-      },
-    );
-
-    // 1. Handle notification logic
-    if (enableNotifications) {
-      final granted = await NotificationService().requestNotificationPermissions();
-      if (granted) {
-        await _scheduleDailyNotifications();
-      }
+  // 🟢 REFACTORED: Main fix - uses requestNotificationsWithPrompt() and handles properly
+  Future<void> _onContinue(BuildContext context, bool enableNotifications) async {
+    // Guard against multiple taps
+    if (_isLoading) {
+      debugPrint('⚠️ Already processing, ignoring duplicate tap');
+      return;
     }
 
-    // 2. Update the 'onboardingComplete' flag in Firestore
-    // We use DatabaseService for this, not SharedPreferences
-    await DatabaseService().completeOnboarding();
+    setState(() {
+      _isLoading = true;
+    });
 
-    // 3. DO NOT NAVIGATE!
-    // The StreamBuilder in AuthGate (main.dart) will detect the change
-    // in Firestore and automatically switch the page to Bottomnavigation.
-    // The loading dialog will disappear when the widget tree changes.
+    try {
+      // 1. Handle notification logic
+      if (enableNotifications) {
+        final notificationService = NotificationService();
+
+        // 🟢 Use the new method that shows prompts
+        if (mounted) {
+          final granted =
+          await notificationService.requestNotificationsWithPrompt(context);
+
+          if (granted) {
+            // Schedule notifications only if user granted permission
+            await _scheduleDailyNotifications();
+            debugPrint('✅ Notifications enabled and scheduled');
+          } else {
+            debugPrint('⚠️ Notifications not enabled by user');
+          }
+        }
+      }
+
+      // 2. Update the 'onboardingComplete' flag in Firestore
+      // Do this AFTER notification logic to ensure everything is set up
+      if (mounted) {
+        await DatabaseService().completeOnboarding();
+        debugPrint('✅ Onboarding marked as complete');
+      }
+
+      // 3. DO NOT NAVIGATE!
+      // The StreamBuilder in UserPageRouter (main.dart) will detect the change
+      // in Firestore and automatically switch the page to Bottomnavigation.
+      debugPrint('✅ Onboarding flow complete. Waiting for UI navigation...');
+    } catch (e, stack) {
+      debugPrint('❌ Error in onboarding flow: $e');
+      debugPrint('Stack trace: $stack');
+
+      // Show error to user
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Row(
+              children: [
+                Icon(Icons.error, color: Colors.white),
+                SizedBox(width: 8),
+                Text('An error occurred. Please try again.'),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 
   @override
@@ -218,7 +280,9 @@ class NotificationOnboardingScreen extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.notifications_active, size: 100, color: Theme.of(context).colorScheme.primary),
+          Icon(Icons.notifications_active,
+              size: 100,
+              color: Theme.of(context).colorScheme.primary),
           const SizedBox(height: 20),
           Text(
             'Stay Motivated with Notifications',
@@ -234,8 +298,9 @@ class NotificationOnboardingScreen extends StatelessWidget {
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 40),
+          // 🟢 FIXED: Disable buttons while loading
           ElevatedButton(
-            onPressed: () => _onContinue(context, true),
+            onPressed: _isLoading ? null : () => _onContinue(context, true),
             style: ElevatedButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
               backgroundColor: Theme.of(context).colorScheme.primary,
@@ -244,14 +309,26 @@ class NotificationOnboardingScreen extends StatelessWidget {
                 borderRadius: BorderRadius.circular(30),
               ),
             ),
-            child: const Text('Enable Notifications'),
+            child: _isLoading
+                ? const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            )
+                : const Text('Enable Notifications'),
           ),
+          // 🟢 FIXED: Disable skip button while loading
           TextButton(
-            onPressed: () => _onContinue(context, false),
+            onPressed: _isLoading ? null : () => _onContinue(context, false),
             child: Text(
               'No thanks, skip for now',
               style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurface,
+                color: _isLoading
+                    ? Colors.grey
+                    : Theme.of(context).colorScheme.onSurface,
               ),
             ),
           ),
