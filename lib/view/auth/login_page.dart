@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import '../homepage.dart';
 import 'forgot_password_page.dart';
 import 'signup_page.dart';
-import 'profile_completion_page.dart'; // ✅ NEW
+// import 'profile_completion_page.dart';
 import 'package:myapp/services/google_signin.dart';
-import 'package:myapp/features/bottomnavigation.dart';
+// import 'package:myapp/features/bottomnavigation.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -37,15 +36,15 @@ class _LoginPageState extends State<LoginPage> {
         password: passwordController.text.trim(),
       );
 
-      if (!mounted) return;
+      // 🟢 REMOVED: Navigation is now handled by AuthGate in main.dart
+      // if (!mounted) return;
+      // Navigator.pushReplacement(
+      //   context,
+      //   MaterialPageRoute(
+      //     builder: (_) => const Bottomnavigation(title: 'Steps4Perks'),
+      //   ),
+      // );
 
-      // Navigate to home
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => const Bottomnavigation(title: 'Steps4Perks'),
-        ),
-      );
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -58,42 +57,17 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  // ✅ UPDATED: Google Sign-In with profile completion check
+  // ✅ UPDATED: Google Sign-In (no navigation)
   Future<void> signInWithGoogle() async {
     setState(() => isLoading = true);
 
     try {
-      final result = await _googleAuthService.signInWithGoogle();
+      await _googleAuthService.signInWithGoogle();
 
-      if (result == null) {
-        // User canceled or error occurred
-        if (!mounted) return;
-        setState(() => isLoading = false);
-        return;
-      }
+      // 🟢 REMOVED: All navigation logic is now handled by AuthGate
+      // The StreamBuilder in main.dart will see the auth change
+      // and automatically route the user to the correct page.
 
-      final user = result['user'] as User;
-      final isNewUser = result['isNewUser'] as bool;
-
-      if (!mounted) return;
-
-      if (isNewUser) {
-        // New user or incomplete profile - redirect to profile completion
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ProfileCompletionPage(user: user),
-          ),
-        );
-      } else {
-        // Existing user with complete profile - go to home
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => const Bottomnavigation(title: 'Steps4Perks'),
-          ),
-        );
-      }
     } catch (e) {
       print('❌ Google sign-in error: $e');
       if (!mounted) return;

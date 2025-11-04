@@ -12,34 +12,28 @@ class DatabaseService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   // --- User ID Management ---
-  /// Retrieves the current user's UID from Firebase Authentication.
-  /// If no user is signed in, it returns null.
   String? getUserId() {
     return FirebaseAuth.instance.currentUser?.uid;
   }
 
   // --- Helper for Consistent Document Paths ---
-
-  /// Provides a consistent DocumentReference for daily stats for the current user.
-  /// Structure: `users/{userUid}/dailyStats/{date}`
   DocumentReference? _getDailyStatsDocRef(String date) {
     final userUid = getUserId();
     if (userUid == null) {
       debugPrint('❌ _getDailyStatsDocRef: User not authenticated.');
       return null;
     }
+
     return _firestore
-        .collection('users') // Top-level collection for user data
-        .doc(userUid) // Document representing the specific user
-        .collection('dailyStats') // Subcollection for daily statistics documents
-        .doc(date); // Document for the specific date (e.g., '2025-07-24')
+        .collection('users')
+        .doc(userUid)
+        .collection('dailyStats')
+        .doc(date);
   }
 
   // --- Core Data Operations ---
-
-  /// Manually syncs local data to Firestore. This is useful for providing a sync button
-  /// to the user for manual data saving and error recovery.
-  Future<bool> manualSync() async {
+  /// 🟢 FIX: manualSync now accepts the StepTracker instance as a parameter
+  Future<bool> manualSync(StepTracker stepTracker) async {
     final userUid = getUserId();
     if (userUid == null) {
       debugPrint('❌ manualSync: User not authenticated. Cannot sync.');
@@ -50,11 +44,11 @@ class DatabaseService {
       debugPrint('🔄 Starting manual sync...');
       final today = DateFormat('yyyy-MM-dd').format(DateTime.now().toLocal());
 
-      // Fetch the latest data from your local state/step tracker service.
-      final localSteps = StepTracker.instance.getTodaySteps;
-      final localDailyPoints = StepTracker.instance.getDailyPointsEarned;
-      final localStreak = StepTracker.instance.getStreak;
-      final hasClaimedBonus = StepTracker.instance.hasClaimedDailyBonus;
+      // 🟢 FIX: Access getters directly from the passed 'stepTracker' object
+      final localSteps = stepTracker.getTodaySteps;
+      final localDailyPoints = stepTracker.getDailyPointsEarned;
+      final localStreak = stepTracker.getStreak;
+      final hasClaimedBonus = stepTracker.hasClaimedDailyBonus;
 
       // Use the existing save method to push this data to Firestore.
       await saveStatsAndPoints(
@@ -66,7 +60,6 @@ class DatabaseService {
       );
 
       // Also update the main user profile with the latest streak
-      // from the StepTracker to ensure consistency.
       await setUserProfileStreak(localStreak);
 
       debugPrint('✅ Manual sync successful!');
@@ -78,7 +71,6 @@ class DatabaseService {
   }
 
   /// Saves or updates daily step statistics for a specific date.
-  /// Data is stored under the consistent path: `users/{userUid}/dailyStats/{date}`.
   Future<void> saveStatsAndPoints({
     required String date,
     required int steps,
@@ -86,39 +78,37 @@ class DatabaseService {
     required int streak,
     bool claimedDailyBonus = false,
   }) async {
-    final docRef = _getDailyStatsDocRef(date); // Use the consistent path helper
+    final docRef = _getDailyStatsDocRef(date);
     if (docRef == null) return;
 
-    final batch = _firestore.batch(); // Use a batch for atomic updates
+    final batch = _firestore.batch();
 
     batch.set(docRef, {
       'date': date,
       'steps': steps,
       'dailyPointsEarned': dailyPointsEarned,
       'streak': streak,
-      'claimedDailyBonus': claimedDailyBonus, // Store the daily bonus claim status
-      'lastUpdated': FieldValue.serverTimestamp(), // Timestamp of the last update
-      // Add a dedicated timestamp field for range queries (e.g., for charts)
+      'claimedDailyBonus': claimedDailyBonus,
+      'lastUpdated': FieldValue.serverTimestamp(),
       'timestamp': Timestamp.fromDate(DateFormat('yyyy-MM-dd').parse(date)),
-    }, SetOptions(merge: true)); // Merge to update existing fields without overwriting others
+    }, SetOptions(merge: true));
 
     try {
-      await batch.commit(); // Commit all batched writes
+      await batch.commit();
       debugPrint('✅ saveStatsAndPoints: Batching complete for $date.');
     } catch (e, stack) {
       debugPrint('❌ saveStatsAndPoints failed: $e');
       debugPrint('Stack Trace: $stack');
-      rethrow; // Re-throw the error to allow the caller to handle it
+      rethrow;
     }
   }
 
   /// Updates only the daily bonus claim status for a specific date.
-  /// Data is updated under the consistent path: `users/{userUid}/dailyStats/{date}`.
   Future<void> updateDailyClaimStatus({
     required String date,
     required bool claimed,
   }) async {
-    final docRef = _getDailyStatsDocRef(date); // Use the consistent path helper
+    final docRef = _getDailyStatsDocRef(date);
     if (docRef == null) return;
 
     try {
@@ -126,6 +116,7 @@ class DatabaseService {
         'claimedDailyBonus': claimed,
         'lastUpdated': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
+
       debugPrint('✅ Daily bonus claim status updated for $date: $claimed.');
     } catch (e, stack) {
       debugPrint('❌ updateDailyClaimStatus failed: $e');
@@ -135,78 +126,69 @@ class DatabaseService {
   }
 
   /// Retrieves daily stats for a specific date.
-  /// Data is retrieved from the consistent path: `users/{userUid}/dailyStats/{date}`.
   Future<Map<String, dynamic>?> getDailyStatsOnce(String date) async {
     try {
-      final docRef = _getDailyStatsDocRef(date); // Use the consistent path helper
+      final docRef = _getDailyStatsDocRef(date);
       if (docRef == null) return null;
 
       final docSnapshot = await docRef.get();
       if (docSnapshot.exists) {
-        // Explicitly cast the data to Map<String, dynamic>
         return docSnapshot.data() as Map<String, dynamic>?;
       }
-      return null; // Document does not exist
+
+      return null;
     } catch (e) {
       debugPrint('Error getting daily stats: $e');
-      return null; // Return null on error
+      return null;
     }
   }
 
   // --- Redeeming Points (Spending Accumulated Points) ---
-
-  /// Handles the redemption (spending) of accumulated points.
-  /// This method decrements points from the main user profile document (`users/{userUid}`).
   Future<bool> redeemDailyPoints({
-    required String date, // Date for logging the daily redemption amount
+    required String date,
     required int pointsToRedeem,
-    required int currentTotalPoints, // The total points after local deduction (for transaction check)
+    required int currentTotalPoints,
   }) async {
     final userUid = getUserId();
     if (userUid == null) {
       debugPrint('❌ redeemDailyPoints: User not authenticated.');
       return false;
     }
-    // Reference to the main user profile document where overall total points are stored.
+
     final userProfileRef = _firestore.collection('users').doc(userUid);
 
-    return await _firestore.runTransaction((transaction) async {
+    return await _firestore.runTransaction<bool>((transaction) async {
       final userSnapshot = await transaction.get(userProfileRef);
-
-      // Safely get the current total points from the database.
       int currentDbTotalPoints = userSnapshot.data()?['totalPoints'] as int? ?? 0;
 
       if (currentDbTotalPoints < pointsToRedeem) {
-        debugPrint('Insufficient points in DB for redemption. User has $currentDbTotalPoints, needs $pointsToRedeem.');
+        debugPrint(
+            'Insufficient points in DB for redemption. User has $currentDbTotalPoints, needs $pointsToRedeem.');
         return false;
       }
 
-      // Decrement points in the user's main profile document.
       transaction.set(userProfileRef, {
         'totalPoints': FieldValue.increment(-pointsToRedeem),
-        'lastRedeemedAt': FieldValue.serverTimestamp(), // Timestamp of this redemption
+        'lastRedeemedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
-      // Optionally, log the redeemed amount for the specific day in dailyStats.
       final dailyStatsDocRef = _getDailyStatsDocRef(date);
       if (dailyStatsDocRef != null) {
         transaction.set(dailyStatsDocRef, {
-          'pointsRedeemedToday': FieldValue.increment(pointsToRedeem), // Track amount redeemed today
-          'lastRedeemedTimestamp': FieldValue.serverTimestamp(), // Timestamp of this specific redemption
+          'pointsRedeemedToday': FieldValue.increment(pointsToRedeem),
+          'lastRedeemedTimestamp': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
       }
 
-      return true; // Transaction successful
+      return true;
     }).catchError((error, stackTrace) {
       debugPrint('❌ Redemption transaction failed: $error');
       debugPrint('Stack Trace: $stackTrace');
-      return false; // Transaction failed
+      return false;
     });
   }
 
   // --- Data Retrieval for Charts ---
-
-  /// Retrieves weekly step data for the current user.
   Future<Map<String, int>> getWeeklyStepData() async {
     final userUid = getUserId();
     if (userUid == null) return {};
@@ -223,7 +205,6 @@ class DatabaseService {
         .get();
 
     final stepData = <String, int>{};
-
     for (final doc in querySnapshot.docs) {
       final data = doc.data();
       final timestamp = data['timestamp'] as Timestamp?;
@@ -252,7 +233,6 @@ class DatabaseService {
     return days[weekday - 1];
   }
 
-  /// Retrieves monthly step data aggregated by **week of the current month**.
   Future<Map<String, int>> getMonthlyStepData() async {
     final userUid = getUserId();
     if (userUid == null) return {};
@@ -298,8 +278,6 @@ class DatabaseService {
   }
 
   // --- Deletion ---
-
-  /// Deletes all dailyStats documents for the current user.
   Future<void> deleteAllDailyStats() async {
     final userUid = getUserId();
     if (userUid == null) return;
@@ -312,9 +290,11 @@ class DatabaseService {
 
       final snapshot = await collectionRef.get();
       final batch = _firestore.batch();
+
       for (final doc in snapshot.docs) {
         batch.delete(doc.reference);
       }
+
       await batch.commit();
       debugPrint('🗑️ DatabaseService: All dailyStats documents deleted for user: $userUid');
     } catch (e, stackTrace) {
@@ -324,7 +304,6 @@ class DatabaseService {
   }
 
   // --- Rewards & Points Management ---
-
   Future<void> addRedeemedReward({
     required String rewardType,
     required num value,
@@ -356,7 +335,6 @@ class DatabaseService {
       };
 
       await rewardRef.set(data);
-
       debugPrint('🎁 addRedeemedReward: Added $rewardType reward with value $value');
     } catch (e, stackTrace) {
       debugPrint('❌ addRedeemedReward error: $e');
@@ -395,6 +373,7 @@ class DatabaseService {
     if (userUid == null) return 0;
 
     final userProfileRef = _firestore.collection('users').doc(userUid);
+
     try {
       final userSnapshot = await userProfileRef.get();
       if (userSnapshot.exists) {
@@ -413,11 +392,13 @@ class DatabaseService {
     if (userUid == null) return;
 
     final userRef = _firestore.collection('users').doc(userUid);
+
     try {
       await userRef.set({
         'currentStreak': streak,
         'streakUpdatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
+
       debugPrint('✅ setUserProfileStreak → $streak');
     } catch (e, stack) {
       debugPrint('❌ setUserProfileStreak failed: $e');
@@ -431,6 +412,7 @@ class DatabaseService {
     if (userUid == null) return 0;
 
     final userRef = _firestore.collection('users').doc(userUid);
+
     try {
       final snap = await userRef.get();
       return snap.data()?['currentStreak'] as int? ?? 0;
@@ -451,6 +433,7 @@ class DatabaseService {
           .collection('redeemed_rewards');
 
       final querySnapshot = await rewardRef.get();
+
       final rewardList = querySnapshot.docs.map((doc) {
         return RedeemedRewardHistoryItem.fromFirestore(doc.id, doc.data());
       }).toList();
@@ -484,6 +467,7 @@ class DatabaseService {
     if (userUid == null) return null;
 
     final userRef = _firestore.collection('users').doc(userUid);
+
     try {
       final snap = await userRef.get();
       return snap.data();
@@ -498,11 +482,13 @@ class DatabaseService {
     if (userUid == null) return;
 
     final userRef = _firestore.collection('users').doc(userUid);
+
     try {
       await userRef.set({
         'name': name,
         'nameUpdatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
+
       debugPrint('✅ updateUserName → $name');
     } catch (e) {
       debugPrint('❌ updateUserName failed: $e');
@@ -510,13 +496,14 @@ class DatabaseService {
     }
   }
 
-  // A NEW method to create the initial user document on sign-up
+  /// 🟢 IMPORTANT: No profile picture field - handled by ProfileImageService locally
   Future<void> createUserDocument({
     required String userUid,
     required String email,
     required int age,
   }) async {
     final userRef = _firestore.collection('users').doc(userUid);
+
     await userRef.set({
       'email': email,
       'age': age,
@@ -525,7 +512,31 @@ class DatabaseService {
       'currentStreak': 0,
       'lastClaimedDate': null,
       'lastRedeemedDate': null,
+      'onboardingComplete': false,
       'updatedAt': FieldValue.serverTimestamp(),
+      // 🟢 NO photoURL or profilePicture field - handled locally by ProfileImageService
     });
+  }
+
+  Future<void> completeOnboarding() async {
+    final userUid = getUserId();
+    if (userUid == null) {
+      debugPrint('❌ completeOnboarding: User not authenticated.');
+      return;
+    }
+
+    final userRef = _firestore.collection('users').doc(userUid);
+
+    try {
+      await userRef.set({
+        'onboardingComplete': true,
+        'onboardingCompletedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      debugPrint('✅ Onboarding marked as complete for user $userUid');
+    } catch (e) {
+      debugPrint('❌ completeOnboarding failed: $e');
+      rethrow;
+    }
   }
 }

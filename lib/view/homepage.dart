@@ -4,8 +4,9 @@ import 'package:myapp/features/step_tracker.dart';
 import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:flutter/foundation.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:myapp/services/database_service.dart';
+// 🟢 REMOVED: No longer need FirebaseAuth or DatabaseService here
+// import 'package:firebase_auth/firebase_auth.dart';
+// import 'package:myapp/services/database_service.dart';
 
 /// This is the parent widget that manages the state and provides keys for the tutorial.
 class HomePage extends StatefulWidget {
@@ -26,122 +27,35 @@ class HomePage extends StatefulWidget {
   HomePageState createState() => HomePageState();
 }
 
-// 🟢 IMPROVEMENT 1: Mix in AutomaticKeepAliveClientMixin
 class HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin {
-  int _oldSteps = 0;
-  bool _isLoading = true;
 
-  // 🟢 IMPROVEMENT 2: Add the wantKeepAlive getter
+  // 🟢 REMOVED: All local state is gone (_oldSteps, _isLoading)
+  // 🟢 REMOVED: All data loading logic is gone (initState, _loadInitialData, _loadData)
+
   @override
   bool get wantKeepAlive => true;
 
-  @override
-  void initState() {
-    super.initState();
-    _loadInitialData();
-  }
-
-  /// ✅ Load data when page is first created
-  Future<void> _loadInitialData() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      await _loadData(user.uid);
-    }
-  }
-
-  /// ✅ Reload data from Firestore
-  Future<void> _loadData(String userId) async {
-    final stepTracker = Provider.of<StepTracker>(context, listen: false);
-
-    if (mounted) {
-      setState(() => _isLoading = true);
-    }
-
-    try {
-      final data = await DatabaseService().getDailyStatsOnce(userId);
-
-      debugPrint(data != null ? '✅ Firestore data received' : '🚫 No data found for today');
-
-      if (data != null) {
-        debugPrint('📊 Steps: ${data['steps']}, Streak: ${data['streak']}, Daily Points: ${data['dailyPointsEarned']}');
-
-        stepTracker.setCurrentSteps(data['steps'] ?? 0);
-
-        final int streakFromDb = (data['streak'] as int?) ?? 0;
-        if (streakFromDb != stepTracker.currentStreak) {
-          stepTracker.setCurrentStreak(streakFromDb);
-        }
-
-        stepTracker.setClaimedToday(data['claimedDailyBonus'] == true);
-      } else {
-        // 🟢 FIX: This block is entered when no data is in Firestore for today.
-        // We MUST NOT reset the live steps to 0, as the StepTracker
-        // already has the correct live count from the pedometer.
-        //
-        // stepTracker.setCurrentSteps(0); // <--- THIS LINE WAS THE BUG & IS NOW REMOVED.
-
-        // We only need to ensure the claimed status is false if no data exists.
-        stepTracker.setClaimedToday(false);
-      }
-
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _oldSteps = stepTracker.currentSteps;
-        });
-      }
-
-      debugPrint('✅ Data loading complete. isLoading = $_isLoading, _oldSteps = $_oldSteps');
-    } catch (e, stackTrace) {
-      debugPrint('❌ Error loading data: $e');
-      debugPrint('Stack Trace: $stackTrace');
-
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
-  }
-
-  /// ✅ Public method to refresh data (called from BottomNavigation)
-  Future<void> refreshData() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      await _loadData(user.uid);
-    }
-  }
-
   /// ✅ Refresh handler for pull-to-refresh
   Future<void> _handleRefresh() async {
-    await refreshData();
+    // 🟢 CHANGED: We now call the provider's refresh method
+    await Provider.of<StepTracker>(context, listen: false).refreshData();
   }
 
   @override
   Widget build(BuildContext context) {
-    // 🟢 IMPROVEMENT 3: Add super.build(context) for the mixin
-    super.build(context);
+    super.build(context); // Keep this for AutomaticKeepAliveClientMixin
 
-    return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
+    // 🟢 REMOVED: The StreamBuilder<User?> is gone.
+    // AuthGate already guarantees we have a user and are on this page.
 
-        if (snapshot.hasData) {
-          return HomePageContent(
-            stepGaugeKey: widget.stepGaugeKey,
-            dailyStreakKey: widget.dailyStreakKey,
-            pointsEarnedKey: widget.pointsEarnedKey,
-            mockStepsKey: widget.mockStepsKey,
-            oldSteps: _oldSteps,
-            isLoading: _isLoading,
-            onRefresh: _handleRefresh,
-            parentContext: context,
-          );
-        } else {
-          return const Center(child: Text('Please sign in.'));
-        }
-      },
+    // We just return the HomePageContent directly.
+    return HomePageContent(
+      stepGaugeKey: widget.stepGaugeKey,
+      dailyStreakKey: widget.dailyStreakKey,
+      pointsEarnedKey: widget.pointsEarnedKey,
+      mockStepsKey: widget.mockStepsKey,
+      onRefresh: _handleRefresh,
+      parentContext: context,
     );
   }
 }
@@ -152,8 +66,6 @@ class HomePageContent extends StatelessWidget {
   final GlobalKey dailyStreakKey;
   final GlobalKey pointsEarnedKey;
   final GlobalKey mockStepsKey;
-  final int oldSteps;
-  final bool isLoading;
   final Future<void> Function() onRefresh;
   final BuildContext parentContext;
 
@@ -163,15 +75,18 @@ class HomePageContent extends StatelessWidget {
     required this.dailyStreakKey,
     required this.pointsEarnedKey,
     required this.mockStepsKey,
-    required this.oldSteps,
-    required this.isLoading,
     required this.onRefresh,
     required this.parentContext,
+    // 🟢 REMOVED: oldSteps and isLoading are no longer passed in
   });
 
   @override
   Widget build(BuildContext context) {
+    // 🟢 CHANGED: We now get isLoading and oldSteps directly from the provider
     final stepTracker = Provider.of<StepTracker>(context);
+    final bool isLoading = stepTracker.isLoading;
+    final int oldSteps = stepTracker.oldSteps;
+
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
 
@@ -208,7 +123,8 @@ class HomePageContent extends StatelessWidget {
                     ),
                   ),
                 ),
-              _buildGauge(screenWidth, stepTracker, stepGaugeKey),
+              // 🟢 CHANGED: Pass 'oldSteps' to the gauge
+              _buildGauge(screenWidth, stepTracker, stepGaugeKey, oldSteps),
               const SizedBox(height: 20),
               _buildSummaryCards(stepTracker, dailyStreakKey, pointsEarnedKey),
               const SizedBox(height: 20),
@@ -248,7 +164,8 @@ class HomePageContent extends StatelessWidget {
     );
   }
 
-  Widget _buildGauge(double screenWidth, StepTracker tracker, GlobalKey key) {
+  // 🟢 CHANGED: Added 'oldSteps' parameter
+  Widget _buildGauge(double screenWidth, StepTracker tracker, GlobalKey key, int oldSteps) {
     return SizedBox(
       key: key,
       width: screenWidth * 0.65,
@@ -260,6 +177,7 @@ class HomePageContent extends StatelessWidget {
         ),
         duration: const Duration(milliseconds: 600),
         builder: (context, value, child) {
+          // 🟢 NOTE: Your step_gauge.dart file is correct
           return StepGauge(currentSteps: value.toInt());
         },
       ),

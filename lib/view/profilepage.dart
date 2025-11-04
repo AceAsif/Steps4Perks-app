@@ -12,7 +12,7 @@ import 'package:myapp/widgets/profile_specific/options_tile.dart';
 import 'package:myapp/widgets/profile_specific/disable_notification_dialog.dart';
 import 'package:myapp/widgets/profile_specific/notification_settings_dialog.dart';
 import 'package:myapp/features/profile_image_provider.dart';
-import 'package:myapp/view/auth/login_page.dart'; // 🟢 1. ADD THIS IMPORT (adjust path if needed)
+import 'package:myapp/features/step_tracker.dart';
 
 class ProfilePageContent extends StatefulWidget {
   const ProfilePageContent({super.key});
@@ -28,7 +28,6 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
   final DatabaseService _databaseService = DatabaseService();
   String _name = "Asif";
   String _email = "asif@gmail.com";
-
   final List<String> _profileImages = [
     'assets/profile.png',
     'assets/female.png',
@@ -68,10 +67,12 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
 
   Future<void> _loadProfile() async {
     final data = await _databaseService.getUserProfile();
-    setState(() {
-      _name = data?['name'] ?? _name;
-      _email = data?['email'] ?? _email;
-    });
+    if (mounted) {
+      setState(() {
+        _name = data?['name'] ?? _name;
+        _email = data?['email'] ?? _email;
+      });
+    }
   }
 
   Future<void> _editName() async {
@@ -99,8 +100,8 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
 
     if (newName != null && newName.isNotEmpty) {
       await _databaseService.updateUserName(newName);
-      setState(() => _name = newName);
       if (mounted) {
+        setState(() => _name = newName);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("✅ Name updated successfully!")),
         );
@@ -144,17 +145,21 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
       if (granted) {
         await _scheduleDailyNotifications();
       } else {
-        setState(() => _notificationsEnabled = false);
+        if (mounted) setState(() => _notificationsEnabled = false);
       }
     } else {
       await notificationService.cancelAllNotifications();
-      if (context.mounted) {
+      if (mounted) {
         showDisableNotificationDialog(context);
       }
     }
   }
 
   Future<void> _handleManualSync() async {
+    final stepTracker = Provider.of<StepTracker>(context, listen: false);
+
+    if (!mounted) return;
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -163,10 +168,11 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
       },
     );
 
-    final success = await _databaseService.manualSync();
-    if (context.mounted) Navigator.of(context).pop();
+    final success = await _databaseService.manualSync(stepTracker);
 
-    if (context.mounted) {
+    if (mounted) Navigator.of(context).pop();
+
+    if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -180,9 +186,8 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
     }
   }
 
-  /// ✅ UPDATED: Handles user logout correctly
+  /// ✅ FIXED: Enhanced logout that properly returns to auth flow
   Future<void> _handleLogout() async {
-    // Show confirmation dialog
     final shouldLogout = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -202,64 +207,52 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
       ),
     );
 
-    // If user confirmed, proceed with logout
-    if (shouldLogout == true) {
-      // Show loading dialog
+    if (shouldLogout != true) return;
+
+    if (!mounted) return;
+
+    // Show loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return const LoadingDialog(message: 'Logging out...');
+      },
+    );
+
+    try {
+      // Sign out from Google and Firebase
+      final googleAuthService = GoogleAuthService();
+      await googleAuthService.signOut();
+
+      debugPrint('✅ Successfully signed out from Google and Firebase');
+
+      // Close loading dialog
+      if (mounted) Navigator.of(context).pop();
+
+      // 🟢 FIX: Don't navigate manually - let AuthGate handle it
+      // Just pop back to root and AuthGate will detect the sign-out
+      // and show LoginPage automatically
       if (mounted) {
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (BuildContext context) {
-            return const LoadingDialog(message: 'Logging out...');
-          },
-        );
+        // Pop all routes until we reach root (which has AuthGate)
+        Navigator.of(context).popUntil((route) => route.isFirst);
       }
+    } catch (e) {
+      debugPrint('❌ Logout error: $e');
 
-      try {
-        // Sign out from Google and Firebase
-        final googleAuthService = GoogleAuthService();
-        await googleAuthService.signOut();
+      if (mounted) Navigator.of(context).pop(); // Close loading dialog
 
-        // Close loading dialog
-        if (mounted) Navigator.of(context).pop();
-
-        // 🟢 2. FIX: Navigate to LoginPage directly using MaterialPageRoute
-        // This avoids the black screen by not using a named route
-        // that may not exist.
-        if (mounted) {
-          Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(
-              builder: (context) => const LoginPage(),
-            ),
-                (route) => false,
-          );
-        }
-
-        // Show success message
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('✅ Logged out successfully!'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-      } catch (e) {
-        // Close loading dialog
-        if (mounted) Navigator.of(context).pop();
-
-        // Show error message
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('❌ Logout failed: $e'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Logout failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
   }
+
 
   void _showProfileImagePicker() {
     final provider = Provider.of<ProfileImageProvider>(context, listen: false);
@@ -378,6 +371,7 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
             ),
             if (!_notificationsEnabled && _isPermissionPermanentlyDenied)
               _buildBlockedNotificationButton(screenHeight, screenWidth),
+
             SizedBox(height: screenHeight * 0.04),
 
             // General Section
@@ -386,6 +380,7 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
             OptionTile(icon: Icons.star, label: 'Referral Boosters', onTap: () {}),
             OptionTile(icon: Icons.mail_outline, label: 'Contact Support', onTap: () {}),
             OptionTile(icon: Icons.info_outline, label: 'About Steps4Perks', onTap: () {}),
+
             SizedBox(height: screenHeight * 0.025),
 
             // Log Out Button

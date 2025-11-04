@@ -16,25 +16,33 @@ class ActivityPage extends StatefulWidget {
 class _ActivityPageState extends State<ActivityPage> {
   int selectedTabIndex = 0;
   final DatabaseService _databaseService = DatabaseService();
-
   Map<String, int> _weeklyData = {};
   Map<String, int> _monthlyData = {};
   bool _isLoading = true;
-
   int _maxSteps = 0;
   String _maxStepsDate = '';
   DateTime? _lastUpdated;
   bool _hasError = false;
 
+  // 🟢 Store the tracker reference to avoid accessing provider in dispose
+  StepTracker? _stepTracker;
   VoidCallback? _trackerListener;
 
   @override
   void initState() {
     super.initState();
     _fetchWeeklyData(showSnackbar: false);
+  }
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final tracker = Provider.of<StepTracker>(context, listen: false);
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    // 🟢 FIX: Set up listener in didChangeDependencies
+    // This is called after initState when the context is available
+    if (_stepTracker == null) {
+      _stepTracker = Provider.of<StepTracker>(context, listen: false);
+
       _trackerListener = () {
         if (!mounted) return;
         if (selectedTabIndex == 0) {
@@ -43,21 +51,29 @@ class _ActivityPageState extends State<ActivityPage> {
           _fetchMonthlyData(showSnackbar: false);
         }
       };
-      tracker.addListener(_trackerListener!);
-    });
+
+      _stepTracker?.addListener(_trackerListener!);
+    }
   }
 
   @override
   void dispose() {
-    if (_trackerListener != null) {
-      final tracker = Provider.of<StepTracker>(context, listen: false);
-      tracker.removeListener(_trackerListener!);
+    // 🟢 FIX: Remove listener using stored reference, not Provider.of
+    // This avoids accessing the provider after the widget tree is torn down
+    if (_trackerListener != null && _stepTracker != null) {
+      try {
+        _stepTracker!.removeListener(_trackerListener!);
+      } catch (e) {
+        debugPrint('⚠️ Could not remove listener: $e');
+      }
     }
     super.dispose();
   }
 
   /// ✅ Fetch weekly data with proper error handling
   Future<void> _fetchWeeklyData({bool showSnackbar = true}) async {
+    if (!mounted) return;
+
     setState(() {
       _isLoading = true;
       _hasError = false;
@@ -76,7 +92,6 @@ class _ActivityPageState extends State<ActivityPage> {
         final date = startOfWeek.add(Duration(days: i));
         final dayLabel = DateFormat('E').format(date);
         final steps = data[dayLabel] ?? 0;
-
         formattedData[dayLabel] = steps;
 
         if (steps > maxSteps) {
@@ -84,6 +99,8 @@ class _ActivityPageState extends State<ActivityPage> {
           maxStepsDateFormatted = DateFormat('d MMM yyyy (E)').format(date);
         }
       }
+
+      if (!mounted) return;
 
       setState(() {
         _weeklyData = formattedData;
@@ -102,6 +119,9 @@ class _ActivityPageState extends State<ActivityPage> {
       }
     } catch (e) {
       debugPrint("❌ Failed to load weekly data: $e");
+
+      if (!mounted) return;
+
       setState(() {
         _isLoading = false;
         _hasError = true;
@@ -120,6 +140,8 @@ class _ActivityPageState extends State<ActivityPage> {
 
   /// ✅ Fetch monthly data with empty data handling
   Future<void> _fetchMonthlyData({bool showSnackbar = true}) async {
+    if (!mounted) return;
+
     setState(() {
       _isLoading = true;
       _hasError = false;
@@ -130,6 +152,8 @@ class _ActivityPageState extends State<ActivityPage> {
 
       // ✅ Handle empty or null monthly data
       if (weekData.isEmpty || weekData.values.every((steps) => steps == 0)) {
+        if (!mounted) return;
+
         setState(() {
           _monthlyData = {
             'Week 1': 0,
@@ -163,6 +187,8 @@ class _ActivityPageState extends State<ActivityPage> {
         }
       }
 
+      if (!mounted) return;
+
       setState(() {
         _monthlyData = weekData;
         _maxSteps = maxSteps;
@@ -178,6 +204,9 @@ class _ActivityPageState extends State<ActivityPage> {
       }
     } catch (e) {
       debugPrint("❌ Failed to load monthly data: $e");
+
+      if (!mounted) return;
+
       setState(() {
         _isLoading = false;
         _hasError = true;
@@ -197,7 +226,6 @@ class _ActivityPageState extends State<ActivityPage> {
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
-
     return Scaffold(
       appBar: AppBar(
         title: const Padding(
@@ -309,14 +337,12 @@ class _ActivityPageState extends State<ActivityPage> {
 
   Widget _buildTabButton(String label, int index, double screenWidth) {
     final isSelected = selectedTabIndex == index;
-
     return Expanded(
       child: GestureDetector(
         onTap: () {
           setState(() {
             selectedTabIndex = index;
           });
-
           if (index == 0) {
             _fetchWeeklyData();
           } else {

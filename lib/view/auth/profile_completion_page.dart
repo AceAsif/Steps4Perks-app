@@ -1,15 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:myapp/services/database_service.dart';
-import 'package:myapp/features/bottomnavigation.dart';
+// 🟢 REMOVED: This page no longer navigates
+// import 'package:myapp/features/bottomnavigation.dart';
 
 class ProfileCompletionPage extends StatefulWidget {
-  final User user;
-
-  const ProfileCompletionPage({
-    super.key,
-    required this.user,
-  });
+  // 🟢 REMOVED: 'user' parameter is no longer passed in
+  const ProfileCompletionPage({super.key});
 
   @override
   State<ProfileCompletionPage> createState() => _ProfileCompletionPageState();
@@ -22,39 +19,28 @@ class _ProfileCompletionPageState extends State<ProfileCompletionPage> {
   final DatabaseService _dbService = DatabaseService();
   bool _isLoading = false;
 
+  // 🟢 ADDED: We get the user from FirebaseAuth
+  User? _user;
+
   @override
   void initState() {
     super.initState();
-    // ✅ FIX 1: Load the name from Firestore, not from widget.user.displayName
-    _loadExistingProfile();
-  }
+    // 🟢 CHANGED: Get the user from FirebaseAuth first
+    _user = FirebaseAuth.instance.currentUser;
 
-  /// ✅ NEW: Load existing profile data from Firestore
-  Future<void> _loadExistingProfile() async {
-    try {
-      final profileData = await _dbService.getUserProfile();
-
-      if (mounted && profileData != null) {
-        setState(() {
-          // Load name from Firestore if it exists
-          _nameController.text = profileData['name'] ?? widget.user.displayName ?? '';
-
-          // Load age if it exists (for edit mode)
-          if (profileData['age'] != null) {
-            _ageController.text = profileData['age'].toString();
-          }
-        });
-      } else if (mounted) {
-        // Fallback to Google/Facebook display name if no Firestore data
-        _nameController.text = widget.user.displayName ?? '';
-      }
-    } catch (e) {
-      print('❌ Error loading profile: $e');
-      // Fallback to Google/Facebook display name
-      if (mounted) {
-        _nameController.text = widget.user.displayName ?? '';
-      }
+    if (_user == null) {
+      // This should not happen if AuthGate is working, but it's a safe fallback.
+      debugPrint("❌ FATAL: ProfileCompletionPage loaded with no user.");
+      // Navigate to login if something went wrong
+      Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+    } else {
+      // Now that we have the user, pre-fill the name
+      _nameController.text = _user!.displayName ?? '';
     }
+
+    // 🟢 REMOVED: _loadExistingProfile() is not needed
+    // AuthGate already confirmed the profile doesn't exist.
+    // We just need to pre-fill the name from the auth provider (like Google).
   }
 
   @override
@@ -67,36 +53,43 @@ class _ProfileCompletionPageState extends State<ProfileCompletionPage> {
   Future<void> _completeProfile() async {
     if (!_formKey.currentState!.validate()) return;
 
+    // 🟢 Add a null check for the user
+    if (_user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Error: User session not found. Please log in again.')),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
       final age = int.parse(_ageController.text.trim());
       final name = _nameController.text.trim();
 
-      // Create/Update Firestore user document
+      // 🟢 CHANGED: Create Firestore user document using _user
       await _dbService.createUserDocument(
-        userUid: widget.user.uid,
-        email: widget.user.email ?? '',
+        userUid: _user!.uid,
+        email: _user!.email ?? '',
         age: age,
       );
 
       // Update display name in both Firebase Auth and Firestore
-      if (name.isNotEmpty) {
-        await widget.user.updateDisplayName(name);
+      if (name.isNotEmpty && name != _user!.displayName) {
+        await _user!.updateDisplayName(name);
         await _dbService.updateUserName(name);
       }
 
-      print('✅ Profile completed for ${widget.user.email}');
+      print('✅ Profile completed for ${_user!.email}');
 
-      if (!mounted) return;
+      // 🟢 REMOVED: The Navigator.pushReplacement() call
+      // The StreamBuilder in AuthGate will now detect
+      // that the user document exists and will automatically
+      // navigate to the OnboardingPage.
 
-      // Navigate to home
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => const Bottomnavigation(title: 'Steps4Perks'),
-        ),
-      );
+      // We just pop the loading dialog if it's there,
+      // but since we just set state, the AuthGate will
+      // rebuild and handle the rest.
 
     } catch (e) {
       print('❌ Error completing profile: $e');
@@ -147,7 +140,8 @@ class _ProfileCompletionPageState extends State<ProfileCompletionPage> {
 
               // Email (read-only)
               TextFormField(
-                initialValue: widget.user.email,
+                // 🟢 CHANGED: Get email from _user
+                initialValue: _user?.email ?? 'Loading...',
                 enabled: false,
                 decoration: const InputDecoration(
                   labelText: 'Email',
@@ -173,22 +167,22 @@ class _ProfileCompletionPageState extends State<ProfileCompletionPage> {
               ),
               const SizedBox(height: 16),
 
-              // ✅ FIX 2: Age field - Changed minimum age from 13 to 18
+              // Age field
               TextFormField(
                 controller: _ageController,
                 keyboardType: TextInputType.number,
                 decoration: const InputDecoration(
                   labelText: 'Age',
                   prefixIcon: Icon(Icons.cake),
-                  hintText: 'Must be 18 or older', // ✅ Updated hint text
+                  hintText: 'Must be 18 or older',
                 ),
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
                     return 'Please enter your age';
                   }
                   final age = int.tryParse(value);
-                  if (age == null || age < 18 || age > 120) { // ✅ Changed from 13 to 18
-                    return 'You must be at least 18 years old'; // ✅ Updated error message
+                  if (age == null || age < 18 || age > 120) {
+                    return 'You must be at least 18 years old';
                   }
                   return null;
                 },

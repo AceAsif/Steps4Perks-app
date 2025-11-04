@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:myapp/features/bottomnavigation.dart';
 import 'package:myapp/services/notification_service.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+// 🟢 ADDED: Import for DatabaseService
+import 'package:myapp/services/database_service.dart';
+// 🟢 NOTE: These timezone imports aren't used in this file, but are harmless
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz;
 
@@ -22,18 +22,6 @@ class _OnboardingPageState extends State<OnboardingPage> {
   void dispose() {
     _pageController.dispose();
     super.dispose();
-  }
-
-  void _onDone() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('onboardingComplete', true);
-    if (mounted) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (context) => const Bottomnavigation(title: 'Steps4Perks'),
-        ),
-      );
-    }
   }
 
   @override
@@ -59,6 +47,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
                 description: 'Earn points for every step and redeem them for amazing perks.',
                 image: Icons.card_giftcard,
               ),
+              // 🟢 NOTE: This page now handles all "finish" logic
               NotificationOnboardingScreen(),
             ],
           ),
@@ -69,16 +58,16 @@ class _OnboardingPageState extends State<OnboardingPage> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  if (_currentPage < 2) // Only show the 'Next' button on the first two pages
-                    const SizedBox(width: 80), // Placeholder to balance the Next button
-                  if (_currentPage == 2)
-                    const SizedBox(width: 80), // Placeholder to balance the Next button
-
+                  // Use Opacity to keep the dot indicators centered
+                  Opacity(
+                    opacity: 0.0,
+                    child: TextButton(onPressed: null, child: Text(_currentPage == 0 ? '' : 'Back')),
+                  ),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: List.generate(3, (index) => _buildPageIndicator(index)),
                   ),
-                  if (_currentPage < 2)
+                  if (_currentPage < 2) // Only show "Next" on first two pages
                     TextButton(
                       onPressed: () {
                         _pageController.nextPage(
@@ -94,17 +83,10 @@ class _OnboardingPageState extends State<OnboardingPage> {
                         ),
                       ),
                     ),
+                  // 🟢 REMOVED: The "Done" button is no longer here.
+                  // This prevents two "done" buttons on the last page.
                   if (_currentPage == 2)
-                    TextButton(
-                      onPressed: _onDone,
-                      child: Text(
-                        'Done',
-                        style: TextStyle(
-                          fontSize: 18,
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                      ),
-                    ),
+                    SizedBox(width: 80), // Placeholder to keep dots centered
                 ],
               ),
             ),
@@ -173,6 +155,7 @@ class NotificationOnboardingScreen extends StatelessWidget {
 
   Future<void> _scheduleDailyNotifications() async {
     final notificationService = NotificationService();
+    // ... (scheduling logic is unchanged) ...
     await notificationService.scheduleNotification(
       id: 1,
       title: '☀️ Morning Motivation',
@@ -199,7 +182,18 @@ class NotificationOnboardingScreen extends StatelessWidget {
     );
   }
 
+  // 🟢 REFACTORED: This is the main fix
   void _onContinue(BuildContext context, bool enableNotifications) async {
+    // Show a loading dialog so the user knows something is happening
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return const Center(child: CircularProgressIndicator());
+      },
+    );
+
+    // 1. Handle notification logic
     if (enableNotifications) {
       final granted = await NotificationService().requestNotificationPermissions();
       if (granted) {
@@ -207,16 +201,14 @@ class NotificationOnboardingScreen extends StatelessWidget {
       }
     }
 
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('onboardingComplete', true);
+    // 2. Update the 'onboardingComplete' flag in Firestore
+    // We use DatabaseService for this, not SharedPreferences
+    await DatabaseService().completeOnboarding();
 
-    if (context.mounted) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (context) => const Bottomnavigation(title: 'Steps4Perks'),
-        ),
-      );
-    }
+    // 3. DO NOT NAVIGATE!
+    // The StreamBuilder in AuthGate (main.dart) will detect the change
+    // in Firestore and automatically switch the page to Bottomnavigation.
+    // The loading dialog will disappear when the widget tree changes.
   }
 
   @override
