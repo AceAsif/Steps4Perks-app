@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:myapp/features/step_tracker.dart';
+import 'package:myapp/features/profile_image_provider.dart';
 import 'package:myapp/services/database_service.dart';
-import 'package:myapp/services/profile_image_service.dart';
 import 'package:myapp/view/debug_tools_page.dart';
 
 class CustomTopBar extends StatefulWidget {
@@ -15,9 +15,8 @@ class CustomTopBar extends StatefulWidget {
 class _CustomTopBarState extends State<CustomTopBar> {
   int _tapCount = 0;
   String _name = "Asif"; // Default fallback
-  String _profileImagePath = 'assets/profile.png'; // Default avatar
 
-  final List<String> avatarOptions = [
+  final List<String> _avatarOptions = [
     'assets/profile.png',
     'assets/female.png',
     'assets/run.png',
@@ -26,25 +25,26 @@ class _CustomTopBarState extends State<CustomTopBar> {
   @override
   void initState() {
     super.initState();
-    _loadUserData();
+    _loadUserName();
   }
 
-  Future<void> _loadUserData() async {
+  Future<void> _loadUserName() async {
     final profile = await DatabaseService().getUserProfile();
-    final imagePath = await ProfileImageService.getSelectedImage();
-
     if (mounted) {
       setState(() {
         if (profile != null && profile['name'] != null) {
           _name = profile['name'];
         }
-        _profileImagePath = imagePath;
       });
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // 🟢 Watch ProfileImageProvider for automatic updates
+    final imageProvider = context.watch<ProfileImageProvider>();
+    final profileImagePath = _avatarOptions[imageProvider.selectedImageIndex];
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
       child: Row(
@@ -75,9 +75,11 @@ class _CustomTopBarState extends State<CustomTopBar> {
             ),
           ),
 
-          // 🧑 Profile image with tap-to-change and debug access
+          // 🧑 Profile image - READ ONLY, tap for debug access
           GestureDetector(
             onTap: () {
+              // 🟢 CHANGED: Only use for debug access (5 taps)
+              // Profile picture editing is now ONLY in ProfilePage
               _tapCount++;
               if (_tapCount >= 5) {
                 _tapCount = 0;
@@ -87,13 +89,19 @@ class _CustomTopBarState extends State<CustomTopBar> {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('🐞 Debug Tools Unlocked')),
                 );
-              } else {
-                _showProfileImagePicker(context);
+              } else if (_tapCount == 1) {
+                // 🟢 Hint: Guide user to profile page
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('💡 Go to Profile page to change your picture'),
+                    duration: Duration(seconds: 2),
+                  ),
+                );
               }
             },
             child: CircleAvatar(
               radius: 18,
-              backgroundImage: AssetImage(_profileImagePath),
+              backgroundImage: AssetImage(profileImagePath),
             ),
           ),
         ],
@@ -124,52 +132,6 @@ class _CustomTopBarState extends State<CustomTopBar> {
     );
   }
 
-  /// 🖼️ Modal to pick new profile image
-  void _showProfileImagePicker(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (_) {
-        return Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'Select Your Avatar',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 16,
-                children: avatarOptions.asMap().entries.map((entry) {
-                  final index = entry.key;
-                  final path = entry.value;
-
-                  return GestureDetector(
-                    onTap: () async {
-                      await ProfileImageService.saveSelectedImageIndex(index);
-                      if (!mounted) return;
-                      setState(() => _profileImagePath = path);
-                      Navigator.of(context).pop();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('✅ Profile image updated!')),
-                      );
-                    },
-                    child: CircleAvatar(
-                      backgroundImage: AssetImage(path),
-                      radius: 28,
-                    ),
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 12),
-            ],
-          ),
-        );
-      },
-    );
-  }
+// 🟢 REMOVED: _showProfileImagePicker method
+// Profile picture editing is now ONLY available in ProfilePage
 }

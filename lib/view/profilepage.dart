@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:flutter/services.dart'; // 🟢 ADD this at the top of the file
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
@@ -13,6 +14,7 @@ import 'package:myapp/widgets/profile_specific/disable_notification_dialog.dart'
 import 'package:myapp/widgets/profile_specific/notification_settings_dialog.dart';
 import 'package:myapp/features/profile_image_provider.dart';
 import 'package:myapp/features/step_tracker.dart';
+
 
 class ProfilePageContent extends StatefulWidget {
   const ProfilePageContent({super.key});
@@ -280,9 +282,33 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
                 ),
                 itemBuilder: (context, index) {
                   return GestureDetector(
-                    onTap: () {
-                      provider.updateImageIndex(index);
+                    onTap: () async {
+                      // 🟢 Haptic feedback (phone vibrates slightly)
+                      HapticFeedback.mediumImpact();
+
+                      // Update profile image
+                      await provider.updateImageIndex(index);
+
+                      // Close modal
+                      if (!mounted) return;
                       Navigator.pop(context);
+
+                      // 🟢 Visual feedback with icon
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Row(
+                            children: [
+                              Icon(Icons.check_circle, color: Colors.white),
+                              SizedBox(width: 8),
+                              Text('Profile picture updated!'),
+                            ],
+                          ),
+                          backgroundColor: Colors.green,
+                          duration: Duration(seconds: 2),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
                     },
                     child: CircleAvatar(
                       backgroundImage: AssetImage(_profileImages[index]),
