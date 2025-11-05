@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -6,7 +8,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest.dart' as tz;
-import 'dart:async';
 
 import 'firebase_options.dart';
 import 'package:myapp/theme/app_theme.dart';
@@ -14,6 +15,8 @@ import 'package:myapp/features/step_tracker.dart';
 import 'package:myapp/features/profile_image_provider.dart';
 import 'package:myapp/services/notification_service.dart';
 import 'package:myapp/services/profile_image_service.dart';
+import 'package:myapp/services/sync_manager.dart';
+import 'package:myapp/services/database_service.dart';
 import 'package:myapp/view/onboardingpage.dart';
 import 'package:myapp/view/auth/login_page.dart';
 import 'package:myapp/view/auth/signup_page.dart';
@@ -22,6 +25,8 @@ import 'package:myapp/view/auth/profile_completion_page.dart';
 import 'package:myapp/features/bottomnavigation.dart';
 
 final NotificationService notificationService = NotificationService();
+final SyncManager syncManager = SyncManager();
+final DatabaseService databaseService = DatabaseService();
 
 @pragma('vm:entry-point')
 Future _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -45,12 +50,10 @@ void notificationTapBackground(NotificationResponse notificationResponse) {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Firebase
   await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform);
   debugPrint('✅ Firebase initialized.');
 
-  // Initialize Timezones
   try {
     tz.initializeTimeZones();
     debugPrint('✅ Timezones initialized.');
@@ -58,7 +61,6 @@ void main() async {
     debugPrint('❌ Timezone init error: $e');
   }
 
-  // Initialize Notification Service
   try {
     await notificationService.initialize();
     debugPrint('✅ NotificationService initialized.');
@@ -69,16 +71,141 @@ void main() async {
   runApp(const MyApp());
 }
 
-/// 🟢 Global key for accessing context without BuildContext
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
 
   @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
+  Timer? _syncTimer;
+  AppLifecycleState? _lastLifecycleState;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // 🟢 Use WidgetsBindingObserver for reliable lifecycle handling
+    WidgetsBinding.instance.addObserver(this);
+
+    // 🟢 2-min timer while app is open
+    _syncTimer = Timer.periodic(const Duration(minutes: 2), (_) {
+      if (mounted) {
+        debugPrint('⏲️  SyncManager: Periodic sync (2 min interval)...');
+        syncManager.syncNow();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _syncTimer?.cancel();
+    debugPrint('🛑 SyncManager: Timer canceled');
+    super.dispose();
+  }
+
+  /// 🟢 CRITICAL: This fires on all lifecycle changes
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _lastLifecycleState = state;
+    debugPrint('📱 App lifecycle changed: $state');
+
+    switch (state) {
+      case AppLifecycleState.resumed:
+        debugPrint('🟢 App RESUMED - forcing sync of pending data...');
+        _onAppResume();
+        break;
+
+      case AppLifecycleState.paused:
+        debugPrint('🟡 App PAUSED (background) - sync if needed');
+        _onAppPaused();
+        break;
+
+      case AppLifecycleState.detached:
+        debugPrint('🔴 App DETACHED - FINAL SYNC BEFORE CLOSE!');
+        _onAppDetached();
+        break;
+
+      case AppLifecycleState.hidden:
+        debugPrint('⚫ App HIDDEN');
+        break;
+
+      case AppLifecycleState.inactive:
+        debugPrint('⚪ App INACTIVE');
+        break;
+    }
+  }
+
+  /// 🟢 When user opens app - complete sync
+  Future<void> _onAppResume() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        debugPrint('⚠️  No user to sync on resume');
+        return;
+      }
+
+      // Step 1: Sync via SyncManager only - DON'T access providers yet!
+      await syncManager.syncNow(forceWrite: true);
+      debugPrint('✅ SyncManager sync complete on resume');
+
+      // Step 2: Wait a moment
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      // ❌ REMOVE the daily stats sync from here!
+      // The 2-min timer will handle it, plus onPause and onDetach
+
+    } catch (e) {
+      debugPrint('❌ Error on app resume: $e');
+    }
+  }
+
+
+  /// 🟡 When app goes to background
+  Future<void> _onAppPaused() async {
+    try {
+      await syncManager.syncNow();
+      debugPrint('✅ Background sync complete');
+    } catch (e) {
+      debugPrint('❌ Error on app pause: $e');
+    }
+  }
+
+  /// 🔴 CRITICAL: When app is about to close - FINAL SYNC
+  Future<void> _onAppDetached() async {
+    debugPrint('🔴 FINAL SYNC BEFORE APP CLOSES...');
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        debugPrint('⚠️  No user, skipping detach sync');
+        return;
+      }
+
+      // Force sync ALL pending data
+      final syncSuccess = await syncManager.syncNow(forceWrite: true);
+
+      if (syncSuccess) {
+        debugPrint('✅ DETACH SYNC: Successfully synced to Firebase');
+      } else {
+        debugPrint('⚠️  DETACH SYNC: Sync had issues but continuing');
+      }
+
+      // Give Firebase a moment to complete writes
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      debugPrint('✅ FINAL SYNC COMPLETE - App can now close safely');
+    } catch (e) {
+      debugPrint('❌ DETACH SYNC ERROR: $e');
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // 🟢 FIX: Move MultiProvider to the TOP of the tree
-    // This ensures providers are available everywhere in the app
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => StepTracker()),
@@ -103,8 +230,7 @@ class MyApp extends StatelessWidget {
   }
 }
 
-/// 🟢 AuthGate handles authentication state
-/// Shows appropriate page based on user auth status
+/// AuthGate - handles authentication state
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
 
@@ -114,30 +240,22 @@ class AuthGate extends StatelessWidget {
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, authSnapshot) {
         debugPrint(
-            '🔄 AuthGate: Connection state = ${authSnapshot.connectionState}, has data = ${authSnapshot.hasData}');
+            '🔄 AuthGate: Connection state = ${authSnapshot.connectionState}');
 
-        // Still connecting to Firebase
         if (authSnapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
           );
         }
 
-        // User is authenticated
         if (authSnapshot.hasData && authSnapshot.data != null) {
           final user = authSnapshot.data!;
           debugPrint('✅ AuthGate: User logged in = ${user.email}');
-
-          // 🟢 REFACTORED: Pass user to the new router
           return UserPageRouter(user: user);
         }
 
-        // User is not authenticated
         debugPrint('⚠️ AuthGate: No user, showing LoginPage');
 
-        // 🟢 --- THIS IS THE FIX ---
-        // Schedule the provider-clearing to run *after* the build is complete
-        // to prevent the "setState/notifyListeners called during build" error.
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _clearAllProvidersSync(context);
         });
@@ -147,10 +265,8 @@ class AuthGate extends StatelessWidget {
     );
   }
 
-  /// 🟢 NEW: Synchronous clear that doesn't need postFrameCallback
   void _clearAllProvidersSync(BuildContext context) {
     try {
-      // Use try-catch because providers might not exist yet
       final stepTracker = context.read<StepTracker>();
       final profileImageProvider = context.read<ProfileImageProvider>();
 
@@ -160,17 +276,12 @@ class AuthGate extends StatelessWidget {
 
       debugPrint('🧹 All providers cleared on logout');
     } catch (e) {
-      debugPrint('⚠️ Could not clear providers (might not exist yet): $e');
+      debugPrint('⚠️ Could not clear providers: $e');
     }
   }
 }
 
-//
-// 🟢 --- START OF REFACTORED WIDGET ---
-//
-
-/// 🟢 REFACTORED: This widget handles all routing logic for an authenticated user.
-/// It loads providers and then uses a StreamBuilder to determine which page to show.
+/// UserPageRouter
 class UserPageRouter extends StatefulWidget {
   final User user;
 
@@ -192,40 +303,28 @@ class _UserPageRouterState extends State<UserPageRouter> {
   void initState() {
     super.initState();
 
-    // Load providers after frame is built
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _loadProvidersForUser(widget.user.uid);
       }
     });
 
-    // In UserPageRouter initState(), replace the auth listener with:
     _authStateSubscription =
         FirebaseAuth.instance.authStateChanges().listen((user) {
           if (mounted && user != null && user.uid == widget.user.uid) {
             debugPrint(
-                '🔄 Auth state updated for user ${user.uid}, emailVerified: ${user.emailVerified}');
+                '🔄 Auth state updated: emailVerified = ${user.emailVerified}');
 
-            // 🟢 FIX: Simple reload without forceRefresh parameter
             user.reload().then((_) {
-              // Get fresh user object after reload
               final freshUser = FirebaseAuth.instance.currentUser;
-              if (freshUser != null) {
-                debugPrint(
-                    '✅ User reloaded: emailVerified = ${freshUser.emailVerified}');
-
-                if (mounted) {
-                  setState(() {
-                    debugPrint('✅ UserPageRouter: Rebuilding with fresh user data');
-                  });
-                }
+              if (freshUser != null && mounted) {
+                setState(() {
+                  debugPrint('✅ UserPageRouter: Rebuilt');
+                });
               }
-            }).catchError((e) {
-              debugPrint('❌ Error reloading user: $e');
             });
           }
         });
-
   }
 
   @override
@@ -237,7 +336,6 @@ class _UserPageRouterState extends State<UserPageRouter> {
   @override
   void didUpdateWidget(covariant UserPageRouter oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // 🟢 FIX: Cast oldWidget to UserPageRouter
     if (oldWidget.user.uid != widget.user.uid) {
       _loadProvidersForUser(widget.user.uid);
     }
@@ -247,7 +345,6 @@ class _UserPageRouterState extends State<UserPageRouter> {
     if (!mounted) return;
 
     if (_loadedForUid == uid && _providersLoaded) {
-      debugPrint('✅ Providers already loaded for $uid');
       return;
     }
 
@@ -271,46 +368,35 @@ class _UserPageRouterState extends State<UserPageRouter> {
         await context.read<ProfileImageProvider>().loadForUser(uid);
       }
 
-      debugPrint('✅ Providers loaded for user: $uid');
-
       if (mounted) {
         setState(() {
           _providersLoaded = true;
         });
       }
-    } catch (e, stack) {
-      debugPrint('❌ Error loading providers: $e\n$stack');
+    } catch (e) {
+      debugPrint('❌ Error loading providers: $e');
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // 🟢 CRITICAL FIX: Get the latest user object from FirebaseAuth
-    // This ensures we always have the most up-to-date emailVerified status
     final currentUser = FirebaseAuth.instance.currentUser;
 
     if (currentUser == null) {
-      debugPrint('❌ User logged out unexpectedly');
       return const LoginPage();
     }
 
-    // 🟢 FIX: Check email verification with FRESH user data
-    // This is the key to fixing the stuck verification page issue
     if (!currentUser.emailVerified &&
         currentUser.providerData.any((p) => p.providerId == 'password')) {
-      debugPrint(
-          '🔐 User email not verified yet, showing VerificationPage. EmailVerified: ${currentUser.emailVerified}');
       return const VerificationPage();
     }
 
-    // Email is verified, continue with normal flow
     if (!_providersLoaded) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       );
     }
 
-    // Listen to Firestore for onboarding status
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance
           .collection('users')
@@ -324,22 +410,17 @@ class _UserPageRouterState extends State<UserPageRouter> {
         }
 
         if (snapshot.hasError) {
-          debugPrint('❌ Error in UserPageRouter stream: ${snapshot.error}');
           return const Scaffold(
             body: Center(child: Text('Error loading user data.')),
           );
         }
 
         if (!snapshot.hasData || !snapshot.data!.exists) {
-          debugPrint('📝 User doc not found, showing ProfileCompletionPage');
           return const ProfileCompletionPage();
         }
 
         final data = snapshot.data!.data() as Map<String, dynamic>?;
         final bool onboardingComplete = data?['onboardingComplete'] ?? false;
-
-        debugPrint(
-            '📋 UserPageRouter: Onboarding complete = $onboardingComplete');
 
         if (onboardingComplete) {
           return const Bottomnavigation(title: 'Steps4Perks');

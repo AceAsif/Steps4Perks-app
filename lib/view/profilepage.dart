@@ -1,20 +1,25 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:device_info_plus/device_info_plus.dart';
-import 'package:flutter/services.dart'; // 🟢 ADD this at the top of the file
+import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
+import 'package:intl/intl.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 import 'package:myapp/services/notification_service.dart';
 import 'package:myapp/services/database_service.dart';
 import 'package:myapp/services/google_signin.dart';
+import 'package:myapp/services/sync_manager.dart';
 import 'package:myapp/widgets/loading_dialog.dart';
 import 'package:myapp/widgets/profile_specific/options_tile.dart';
 import 'package:myapp/widgets/profile_specific/disable_notification_dialog.dart';
 import 'package:myapp/widgets/profile_specific/notification_settings_dialog.dart';
 import 'package:myapp/features/profile_image_provider.dart';
 import 'package:myapp/features/step_tracker.dart';
-
+import 'package:myapp/main.dart'; // For navigatorKey, syncManager, databaseService
 
 class ProfilePageContent extends StatefulWidget {
   const ProfilePageContent({super.key});
@@ -117,7 +122,7 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
       id: 1,
       title: '☀️ Morning Motivation',
       body: 'Start your day right! Go for a short walk and earn some perks.',
-      hour: 9,
+      hour: 8,
       minute: 0,
       scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
     );
@@ -133,7 +138,7 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
       id: 3,
       title: '🌙 Night Walk Reminder',
       body: 'Time to go for a night walk and relax!',
-      hour: 19,
+      hour: 20,
       minute: 0,
       scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
     );
@@ -159,7 +164,6 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
 
   Future<void> _handleManualSync() async {
     final stepTracker = Provider.of<StepTracker>(context, listen: false);
-
     if (!mounted) return;
 
     showDialog(
@@ -188,13 +192,13 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
     }
   }
 
-  /// ✅ FIXED: Enhanced logout that properly returns to auth flow
+  /// 🟢 CRITICAL: Complete logout with final data sync - FIXED
   Future<void> _handleLogout() async {
     final shouldLogout = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text("Log Out"),
-        content: const Text("Are you sure you want to log out?"),
+        content: const Text("Your data will be synced before logging out."),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -210,7 +214,6 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
     );
 
     if (shouldLogout != true) return;
-
     if (!mounted) return;
 
     // Show loading dialog
@@ -218,43 +221,106 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
       context: context,
       barrierDismissible: false,
       builder: (BuildContext context) {
-        return const LoadingDialog(message: 'Logging out...');
+        return const LoadingDialog(message: 'Syncing data & logging out...');
       },
     );
 
     try {
-      // Sign out from Google and Firebase
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        if (mounted) {
+          Navigator.of(context).pop(); // Close loading
+        }
+        return;
+      }
+
+      // 🟢 STEP 1: Force sync all pending data via SyncManager
+      debugPrint('🔄 LOGOUT: Syncing pending data...');
+      await syncManager.syncNow(forceWrite: true);
+
+      // 🟢 STEP 2: Save current daily stats
+      debugPrint('🔄 LOGOUT: Saving daily stats...');
+      try {
+        final stepTracker = context.read<StepTracker>();
+        final today = DateFormat('yyyy-MM-dd').format(DateTime.now().toLocal());
+
+        await databaseService.saveStatsAndPoints(
+          date: today,
+          steps: stepTracker.currentSteps,
+          dailyPointsEarned: stepTracker.dailyPointsEarned,
+          streak: stepTracker.currentStreak,
+          claimedDailyBonus: stepTracker.hasClaimedToday,
+        );
+        debugPrint('✅ Daily stats saved');
+      } catch (e) {
+        debugPrint('⚠️  Error saving daily stats: $e');
+      }
+
+      // 🟢 STEP 3: Update user profile with logout timestamp
+      debugPrint('🔄 LOGOUT: Updating user profile...');
+      try {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .update({
+          'lastLogoutTime': FieldValue.serverTimestamp(),
+          'lastSyncedAt': FieldValue.serverTimestamp(),
+        });
+        debugPrint('✅ User profile updated');
+      } catch (e) {
+        debugPrint('⚠️  Error updating user profile: $e');
+      }
+
+      // 🟢 STEP 4: Sign out from Google and Firebase
+      debugPrint('🔄 LOGOUT: Signing out...');
       final googleAuthService = GoogleAuthService();
       await googleAuthService.signOut();
+      debugPrint('✅ Successfully signed out');
 
-      debugPrint('✅ Successfully signed out from Google and Firebase');
-
-      // Close loading dialog
-      if (mounted) Navigator.of(context).pop();
-
-      // 🟢 FIX: Don't navigate manually - let AuthGate handle it
-      // Just pop back to root and AuthGate will detect the sign-out
-      // and show LoginPage automatically
+      // 🟢 FIX: Close loading dialog BEFORE navigation
       if (mounted) {
-        // Pop all routes until we reach root (which has AuthGate)
-        Navigator.of(context).popUntil((route) => route.isFirst);
+        Navigator.of(context).pop(); // Close loading dialog
       }
-    } catch (e) {
+
+      // 🟢 Wait a moment for dialog to close
+      await Future.delayed(const Duration(milliseconds: 200));
+
+      // 🟢 Show success message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Data saved. Logged out successfully!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+
+      // 🟢 FIX: Use navigatorKey to navigate without context issues
+      await Future.delayed(const Duration(milliseconds: 300));
+      navigatorKey.currentState?.pushNamedAndRemoveUntil('/login', (_) => false);
+
+    } catch (e, stackTrace) {
       debugPrint('❌ Logout error: $e');
+      debugPrint('Stack: $stackTrace');
 
-      if (mounted) Navigator.of(context).pop(); // Close loading dialog
+      // Close loading dialog if still open
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
 
+      // Show error
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('❌ Logout failed: $e'),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
           ),
         );
       }
     }
   }
-
 
   void _showProfileImagePicker() {
     final provider = Provider.of<ProfileImageProvider>(context, listen: false);
@@ -283,17 +349,12 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
                 itemBuilder: (context, index) {
                   return GestureDetector(
                     onTap: () async {
-                      // 🟢 Haptic feedback (phone vibrates slightly)
                       HapticFeedback.mediumImpact();
-
-                      // Update profile image
                       await provider.updateImageIndex(index);
 
-                      // Close modal
                       if (!mounted) return;
                       Navigator.pop(context);
 
-                      // 🟢 Visual feedback with icon
                       if (!mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
@@ -397,7 +458,6 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
             ),
             if (!_notificationsEnabled && _isPermissionPermanentlyDenied)
               _buildBlockedNotificationButton(screenHeight, screenWidth),
-
             SizedBox(height: screenHeight * 0.04),
 
             // General Section
@@ -406,7 +466,6 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
             OptionTile(icon: Icons.star, label: 'Referral Boosters', onTap: () {}),
             OptionTile(icon: Icons.mail_outline, label: 'Contact Support', onTap: () {}),
             OptionTile(icon: Icons.info_outline, label: 'About Steps4Perks', onTap: () {}),
-
             SizedBox(height: screenHeight * 0.025),
 
             // Log Out Button

@@ -4,20 +4,14 @@ import 'package:myapp/services/database_service.dart';
 import 'package:myapp/services/device_service.dart';
 import 'package:myapp/services/permission_service.dart';
 import 'package:myapp/services/pedometer_service.dart';
+import 'package:myapp/services/sync_manager.dart';
 import 'package:myapp/utils/streak_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
-enum StepStatus {
-  idle,
-  syncing,
-  synced,
-  failed,
-}
+enum StepStatus { idle, syncing, synced, failed }
 
-/// 🟢 FIXED: No longer auto-loads in constructor
-/// Data is loaded only when loadForUser() is called from main.dart
 class StepTracker with ChangeNotifier {
   // --- Constants ---
   static const int stepsPerPoint = 100;
@@ -39,13 +33,11 @@ class StepTracker with ChangeNotifier {
   String? _lastClaimCheckedDate;
   StepStatus _status = StepStatus.idle;
 
-  // State variables for UI
   bool _isLoading = true;
   int _oldSteps = 0;
 
   // Date helpers
   String _todayStr() => DateFormat('yyyy-MM-dd').format(DateTime.now().toLocal());
-
   String _yesterdayStr() {
     final now = DateTime.now().toLocal();
     final y = now.subtract(const Duration(days: 1));
@@ -58,25 +50,23 @@ class StepTracker with ChangeNotifier {
   final _pedometerService = PedometerService();
   final _streakManager = StreakManager();
   final _databaseService = DatabaseService();
+  final _syncManager = SyncManager();
 
   // --- Timers & Lifecycle ---
   Timer? _syncTimer;
   bool _isDisposed = false;
 
-  // 🟢 FIX: Constructor NO LONGER auto-loads data
-  // Data loading is now explicit via loadForUser()
   StepTracker() {
     debugPrint('📦 StepTracker: Created (not loading yet)');
   }
 
-  // 🟢 NEW: Generate user-specific SharedPreferences keys
+  // 🟢 Generate user-specific SharedPreferences keys
   String _getPrefsKey(String key) {
     final userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null) {
-      debugPrint('⚠️ _getPrefsKey: No user logged in, using non-namespaced key');
       return key;
     }
-    return '${userId}_$key'; // Prefix all keys with user ID
+    return '${userId}_$key';
   }
 
   // --- Public Getters for UI/External Access ---
@@ -95,7 +85,6 @@ class StepTracker with ChangeNotifier {
   bool get isLoading => _isLoading;
   int get oldSteps => _oldSteps;
 
-  // New getters to expose private variables for manual sync
   int get getTodaySteps => _dailySteps;
   int get getDailyPointsEarned => dailyPointsEarned;
   bool get hasClaimedDailyBonus => _hasClaimedToday;
@@ -110,6 +99,8 @@ class StepTracker with ChangeNotifier {
   void setCurrentSteps(int steps) {
     if (_dailySteps != steps) {
       _dailySteps = steps;
+      // 🟢 QUEUE UPDATE FOR SYNC
+      _syncManager.queueUpdate('dailySteps', steps);
       _safeNotifyListeners();
     }
   }
@@ -124,6 +115,8 @@ class StepTracker with ChangeNotifier {
   void setTotalPoints(int points) {
     if (_totalPoints != points) {
       _totalPoints = points;
+      // 🟢 QUEUE UPDATE FOR SYNC
+      _syncManager.queueUpdate('totalPoints', points);
       _safeNotifyListeners();
     }
   }
@@ -131,11 +124,13 @@ class StepTracker with ChangeNotifier {
   void setClaimedToday(bool claimed) {
     if (_hasClaimedToday != claimed) {
       _hasClaimedToday = claimed;
+      // 🟢 QUEUE UPDATE FOR SYNC
+      _syncManager.queueUpdate('claimedDailyBonus', claimed);
       _safeNotifyListeners();
     }
   }
 
-  // 🟢 NEW: Public method to clear all state when user logs out
+  // 🟢 Public method to clear all state when user logs out
   void clear() {
     debugPrint('🧹 StepTracker: Clearing all state');
     _rawSensorSteps = 0;
@@ -153,30 +148,22 @@ class StepTracker with ChangeNotifier {
     _isLoading = true;
     _oldSteps = 0;
 
-    // Cancel any ongoing operations
     _syncTimer?.cancel();
     _syncTimer = null;
-
-    // 🟢 DON'T call stopListening() - the pedometer stream can't be stopped
-    // The baseline approach already handles user switching correctly
-    // When loadForUser() is called, it will set a new baseline automatically
 
     debugPrint('✅ StepTracker: State cleared');
     _safeNotifyListeners();
   }
 
-  // 🟢 NEW: Public method to initialize data for a specific user
-  // This is called from main.dart after auth is confirmed
+  // 🟢 Public method to initialize data for a specific user
   Future<void> loadForUser(String uid) async {
     debugPrint('👤 StepTracker: Loading data for user $uid');
     _isLoading = true;
     _safeNotifyListeners();
-
     try {
       _isPhysicalDevice = await _deviceService.checkIfPhysicalDevice();
       _isPedometerAvailable = await _permissionService.requestActivityPermission();
 
-      // Load user-specific data from Firestore
       await _loadDataFromFirestore();
 
       if (_isPhysicalDevice && _isPedometerAvailable) {
@@ -202,8 +189,7 @@ class StepTracker with ChangeNotifier {
     }
   }
 
-  // 🟢 MODIFIED: Public method for pull-to-refresh
-  // Now uses the current user's UID
+  // 🟢 Public method for pull-to-refresh
   Future<void> refreshData() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
@@ -219,7 +205,6 @@ class StepTracker with ChangeNotifier {
   Future<void> _loadDataFromFirestore() async {
     _isLoading = true;
     _safeNotifyListeners();
-
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       debugPrint('⚠️ No user logged in, skipping data load');
@@ -231,40 +216,31 @@ class StepTracker with ChangeNotifier {
     try {
       final today = _todayStr();
       final data = await _databaseService.getDailyStatsOnce(today);
-
       if (data != null) {
         final stepsFromDb = data['steps'] ?? 0;
         final streakFromDb = (data['streak'] as int?) ?? 0;
         final claimedFromDb = data['claimedDailyBonus'] == true;
-
         debugPrint('📊 Steps: $stepsFromDb, Streak: $streakFromDb, Daily Points: ${data['dailyPointsEarned']}');
 
-        // 🟢 FIX: Set steps and also initialize SharedPreferences
         setCurrentSteps(stepsFromDb);
         setCurrentStreak(streakFromDb);
         setClaimedToday(claimedFromDb);
 
-        // 🟢 CRITICAL FIX: Initialize SharedPreferences with USER-SPECIFIC keys
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString(_getPrefsKey('lastResetDate'), today);
         await prefs.setInt(_getPrefsKey('dailySteps'), stepsFromDb);
         await prefs.setInt(_getPrefsKey('currentStreak'), streakFromDb);
 
-        // 🟢 Set oldSteps for animation
         _oldSteps = stepsFromDb;
-
         debugPrint('✅ Initialized SharedPreferences for pedometer sensor (user-namespaced)');
       } else {
-        // No data in Firestore for today, check local state
         await _loadBaselineAndStreak();
       }
 
-      // Load total points separately
       await loadTotalPointsFromDB();
     } catch (e, stackTrace) {
       debugPrint('❌ Error loading data from Firestore: $e');
       debugPrint('Stack Trace: $stackTrace');
-      // Fallback to local data
       await _loadBaselineAndStreak();
       await loadTotalPointsFromDB();
     } finally {
@@ -273,12 +249,10 @@ class StepTracker with ChangeNotifier {
     }
   }
 
-  // This method is called as a fallback if Firestore fails or if it's a new day
   Future<void> _loadBaselineAndStreak() async {
     final prefs = await SharedPreferences.getInstance();
     final today = _todayStr();
     final lastDate = prefs.getString(_getPrefsKey('lastResetDate')) ?? '';
-
     debugPrint('📊 Evaluating streak and loading baseline for $today...');
 
     if (lastDate != today) {
@@ -296,7 +270,6 @@ class StepTracker with ChangeNotifier {
         db: _databaseService,
         streakTarget: streakStepTarget,
       );
-
       await prefs.setString(_getPrefsKey('lastResetDate'), today);
       setClaimedToday(false);
     } else {
@@ -304,7 +277,6 @@ class StepTracker with ChangeNotifier {
       _dailyStepBaseline = prefs.getInt(_getPrefsKey('dailyStepBaseline')) ?? 0;
       _currentStreak = await _databaseService.getUserProfileStreak();
       await prefs.setInt(_getPrefsKey('currentStreak'), _currentStreak);
-
       debugPrint('📅 Same day. Loaded dailySteps: $_dailySteps, baseline: $_dailyStepBaseline, streak: $_currentStreak');
     }
 
@@ -326,33 +298,16 @@ class StepTracker with ChangeNotifier {
     }
   }
 
-  Future<void> _persistTodayStats({
-    required String date,
-    required SharedPreferences prefs,
-  }) async {
-    await _databaseService.saveStatsAndPoints(
-      date: date,
-      steps: _dailySteps,
-      dailyPointsEarned: dailyPointsEarned,
-      streak: _currentStreak,
-      claimedDailyBonus: _hasClaimedToday,
-    );
-  }
-
   Future<void> _checkIfClaimedToday(String date) async {
     final prefs = await SharedPreferences.getInstance();
     final lastChecked = prefs.getString(_getPrefsKey('lastClaimCheckedDate'));
-
     if (lastChecked == date && _hasClaimedToday) return;
-
     try {
       final snapshot = await _databaseService.getDailyStatsOnce(date);
       final claimed = snapshot != null &&
           (snapshot['claimedDailyBonus'] == true ||
               snapshot['dailyPointsEarned'] >= maxDailyPoints);
-
       setClaimedToday(claimed);
-
       if (kDebugMode) {
         debugPrint('📦 Daily bonus claim check: $claimed (from DB)');
       }
@@ -370,32 +325,25 @@ class StepTracker with ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     final today = _todayStr();
     final lastDate = prefs.getString(_getPrefsKey('lastResetDate')) ?? '';
-
     debugPrint('👣 [Sensor] Incoming: $cumulativeStepsFromSensor. Last Reset Date: $lastDate. Today: $today');
 
-    // 🟢 NEW DAY DETECTION
     if (today != lastDate) {
       debugPrint('🔄 [Sensor] Detected new day. Applying new day logic.');
       _isNewDay = true;
 
-      // 🟢 CRITICAL FIX: Check if we already loaded data from Firebase
       final hasLoadedData = _dailySteps > 0;
-
       if (hasLoadedData) {
         debugPrint('✅ [Sensor] Data already loaded from Firebase (_dailySteps=$_dailySteps)');
         debugPrint('🔧 [Sensor] Setting baseline without resetting steps');
 
-        // Just set the baseline to current sensor value
         _dailyStepBaseline = cumulativeStepsFromSensor;
         await prefs.setInt(_getPrefsKey('dailyStepBaseline'), _dailyStepBaseline);
         await prefs.setString(_getPrefsKey('lastResetDate'), today);
         await prefs.setInt(_getPrefsKey('dailySteps'), _dailySteps);
-
         await _checkIfClaimedToday(today);
         return;
       }
 
-      // 🟢 NO DATA LOADED: Normal new day reset logic
       debugPrint('🆕 [Sensor] No data loaded, performing fresh day initialization');
       _dailySteps = 0;
       _dailyStepBaseline = cumulativeStepsFromSensor;
@@ -404,7 +352,6 @@ class StepTracker with ChangeNotifier {
       await prefs.setString(_getPrefsKey('lastResetDate'), today);
       await prefs.remove(_getPrefsKey('lastRecordedRawSensorSteps'));
 
-      // Delegate streak new-day evaluation
       _currentStreak = await StreakManager.evaluateForNewDay(
         today: today,
         prefs: prefs,
@@ -415,15 +362,11 @@ class StepTracker with ChangeNotifier {
       setClaimedToday(false);
       await _checkIfClaimedToday(today);
     } else {
-      // 🟢 SAME DAY: Initialize or update baseline
-
       if (_dailyStepBaseline == 0 && cumulativeStepsFromSensor > 0) {
         final lastSavedDailySteps = prefs.getInt(_getPrefsKey('dailySteps')) ?? 0;
         final lastRecordedRawSensorSteps = prefs.getInt(_getPrefsKey('lastRecordedRawSensorSteps')) ?? 0;
 
-        // 🟢 FIX: If we have loaded steps, use them
         final effectiveDailySteps = _dailySteps > 0 ? _dailySteps : lastSavedDailySteps;
-
         if (lastRecordedRawSensorSteps > 0 && cumulativeStepsFromSensor >= lastRecordedRawSensorSteps) {
           _dailyStepBaseline = lastRecordedRawSensorSteps - effectiveDailySteps;
           debugPrint('🎯 [Sensor] Inferred _dailyStepBaseline: $_dailyStepBaseline (from prefs data)');
@@ -435,7 +378,6 @@ class StepTracker with ChangeNotifier {
         await prefs.setInt(_getPrefsKey('dailyStepBaseline'), _dailyStepBaseline);
         debugPrint('✅ [Sensor] Baseline set to $_dailyStepBaseline for current steps: $effectiveDailySteps');
       } else if (_dailyStepBaseline == 0) {
-        // 🟢 FIX: If we have loaded steps but no baseline, calculate baseline
         final effectiveDailySteps = _dailySteps > 0 ? _dailySteps : 0;
         _dailyStepBaseline = cumulativeStepsFromSensor - effectiveDailySteps;
         await prefs.setInt(_getPrefsKey('dailyStepBaseline'), _dailyStepBaseline);
@@ -445,12 +387,11 @@ class StepTracker with ChangeNotifier {
       _currentStreak = prefs.getInt(_getPrefsKey('currentStreak')) ?? _currentStreak;
     }
 
-    // 🟢 CALCULATE NEW STEPS
     final int calculatedDailySteps = (cumulativeStepsFromSensor - _dailyStepBaseline).clamp(0, 10000000);
-
     if (calculatedDailySteps > _dailySteps) {
       debugPrint('✨ [Sensor] New steps detected: $calculatedDailySteps > $_dailySteps');
       final oldPointsEarned = dailyPointsEarned;
+
       _dailySteps = calculatedDailySteps;
       final newPointsEarned = dailyPointsEarned;
       final newPointsFromSteps = newPointsEarned - oldPointsEarned;
@@ -461,11 +402,17 @@ class StepTracker with ChangeNotifier {
         debugPrint('💰 Added $newPointsFromSteps new points from steps. Total: $_totalPoints');
       }
 
+      // 🟢 QUEUE FOR SYNC!
+      _syncManager.queueBatch({
+        'dailySteps': _dailySteps,
+        'totalPoints': _totalPoints,
+        'lastStepsUpdate': DateTime.now().toIso8601String(),
+      });
+
       await prefs.setInt(_getPrefsKey('dailySteps'), _dailySteps);
       await prefs.setInt(_getPrefsKey('lastRecordedRawSensorSteps'), cumulativeStepsFromSensor);
       _safeNotifyListeners();
 
-      // Delegate "credit today if target met" to StreakManager
       _currentStreak = await StreakManager.tryCreditTodayIfTargetMet(
         todaySteps: _dailySteps,
         dailyPointsEarned: dailyPointsEarned,
@@ -496,56 +443,50 @@ class StepTracker with ChangeNotifier {
     }
   }
 
-  // --- Background Sync ---
+  // --- Background Sync with SyncManager ---
   void _startSyncTimer() {
-    int lastSyncedSteps = -1;
-    int lastSyncedPoints = -1;
-    bool lastSyncedClaimStatus = false;
-
-    _syncTimer = Timer.periodic(const Duration(minutes: 3), (_) async {
+    _syncTimer = Timer.periodic(const Duration(minutes: 2), (_) async {
       if (_isDisposed) return;
 
-      final today = DateFormat('yyyy-MM-dd').format(DateTime.now().toLocal());
+      debugPrint('⏲️  StepTracker: 2-min sync timer fired...');
 
-      if (_dailySteps != lastSyncedSteps ||
-          _totalPoints != lastSyncedPoints ||
-          _hasClaimedToday != lastSyncedClaimStatus) {
-        _status = StepStatus.syncing;
-        _safeNotifyListeners();
-        debugPrint('🔄 Initiating background sync: Daily Steps: $_dailySteps, Total Points: $_totalPoints, Claimed Today: $_hasClaimedToday');
+      try {
+        final prefs = await SharedPreferences.getInstance();
 
-        try {
-          await _databaseService.saveStatsAndPoints(
-            date: today,
-            steps: _dailySteps,
-            dailyPointsEarned: dailyPointsEarned,
-            streak: _currentStreak,
-            claimedDailyBonus: _hasClaimedToday,
-          );
+        // 🟢 STEP 1: Save to SharedPreferences (local backup)
+        await prefs.setInt(_getPrefsKey('dailySteps'), _dailySteps);
+        await prefs.setInt(_getPrefsKey('totalPoints'), _totalPoints);
+        await prefs.setInt(_getPrefsKey('currentStreak'), _currentStreak);
 
-          lastSyncedSteps = _dailySteps;
-          lastSyncedPoints = _totalPoints;
-          lastSyncedClaimStatus = _hasClaimedToday;
+        // 🟢 STEP 2: Sync to Firebase via SyncManager
+        final success = await _syncManager.syncNow();
 
-          _status = StepStatus.synced;
-          debugPrint('✅ Background sync successful: Daily Steps: $lastSyncedSteps, Total Points: $lastSyncedPoints, Claimed Today: $lastSyncedClaimStatus');
-        } catch (e, stackTrace) {
-          _status = StepStatus.failed;
-          debugPrint('❌ Background sync failed: $e');
-          debugPrint('Stack Trace: $stackTrace');
-        } finally {
-          _safeNotifyListeners();
+        // 🟢 STEP 3: Also save daily stats
+        if (success) {
+          final today = _todayStr();
+          try {
+            await _databaseService.saveStatsAndPoints(
+              date: today,
+              steps: _dailySteps,
+              dailyPointsEarned: dailyPointsEarned,
+              streak: _currentStreak,
+              claimedDailyBonus: _hasClaimedToday,
+            );
+            debugPrint('✅ 2-min sync complete (local + Firebase + daily stats)');
+          } catch (e) {
+            debugPrint('⚠️  Error saving daily stats: $e');
+          }
         }
-      } else {
-        debugPrint('✅ No changes to sync. Skipping background sync.');
+      } catch (e) {
+        debugPrint('❌ Error in 2-min sync timer: $e');
       }
     });
   }
 
+
   // --- Point Earning Logic for Daily Bonus Claim ---
   Future<void> claimDailyBonusPoints() async {
     final today = DateFormat('yyyy-MM-dd').format(DateTime.now().toLocal());
-
     if (_hasClaimedToday) {
       debugPrint('🚫 Claim rejected. Already claimed for today.');
       return;
@@ -612,16 +553,13 @@ class StepTracker with ChangeNotifier {
     _dailyStepBaseline = 0;
     _rawSensorSteps = 0;
     _pointsRedeemedToday = 0;
-
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_getPrefsKey('dailySteps'), 0);
     await prefs.setInt(_getPrefsKey('dailyStepBaseline'), 0);
     await prefs.remove(_getPrefsKey('lastRecordedRawSensorSteps'));
-
     setClaimedToday(false);
     _isNewDay = true;
     _safeNotifyListeners();
-
     debugPrint('✅ Steps manually reset to 0 (and baseline/redeemed status).');
   }
 
@@ -647,10 +585,8 @@ class StepTracker with ChangeNotifier {
     if (kDebugMode) {
       _dailySteps += stepsToAdd;
       debugPrint('📈 [Mock] Added $stepsToAdd steps. New _dailySteps: $_dailySteps');
-
       final oldPointsEarned = dailyPointsEarned;
       final newPointsEarned = (_dailySteps ~/ stepsPerPoint).clamp(0, maxDailyPoints);
-
       if (newPointsEarned > oldPointsEarned) {
         _totalPoints += (newPointsEarned - oldPointsEarned);
         await SharedPreferences.getInstance().then((prefs) {
@@ -662,7 +598,12 @@ class StepTracker with ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(_getPrefsKey('dailySteps'), _dailySteps);
 
-      // Delegate crediting to StreakManager
+      // 🟢 QUEUE FOR SYNC!
+      _syncManager.queueBatch({
+        'dailySteps': _dailySteps,
+        'totalPoints': _totalPoints,
+      });
+
       final today = _todayStr();
       _currentStreak = await StreakManager.tryCreditTodayIfTargetMet(
         todaySteps: _dailySteps,
@@ -675,7 +616,6 @@ class StepTracker with ChangeNotifier {
         streakTarget: streakStepTarget,
       );
 
-      // Optionally sync to DB for verification
       try {
         await _databaseService.saveStatsAndPoints(
           date: today,
@@ -701,14 +641,11 @@ class StepTracker with ChangeNotifier {
       debugPrint('🧹 [Mock] Resetting mock steps to 0.');
       _dailySteps = 0;
       _dailyStepBaseline = 0;
-
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(_getPrefsKey('dailySteps'), 0);
       await prefs.setInt(_getPrefsKey('dailyStepBaseline'), 0);
       await prefs.remove(_getPrefsKey('lastRecordedRawSensorSteps'));
-
       setClaimedToday(false);
-
       final today = DateFormat('yyyy-MM-dd').format(DateTime.now().toLocal());
       try {
         await _databaseService.saveStatsAndPoints(
