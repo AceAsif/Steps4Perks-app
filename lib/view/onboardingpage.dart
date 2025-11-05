@@ -83,7 +83,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
                       ),
                     ),
                   if (_currentPage == 2)
-                    SizedBox(width: 80), // Placeholder to keep dots centered
+                    const SizedBox(width: 80), // Placeholder to keep dots centered
                 ],
               ),
             ),
@@ -163,7 +163,6 @@ class _NotificationOnboardingScreenState
     extends State<NotificationOnboardingScreen> {
   bool _isLoading = false;
 
-  // 🟢 FIXED: Schedule notifications with proper error handling
   Future<void> _scheduleDailyNotifications() async {
     try {
       final notificationService = NotificationService();
@@ -266,10 +265,15 @@ class _NotificationOnboardingScreenState
           ),
         );
       }
-
-      setState(() {
-        _isLoading = false;
-      });
+    } finally {
+      // 🟢 --- THIS IS THE FIX ---
+      // Always reset the loading state, whether it succeeded or failed.
+      // This will un-freeze the UI.
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 

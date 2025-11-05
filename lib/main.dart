@@ -24,7 +24,7 @@ import 'package:myapp/features/bottomnavigation.dart';
 final NotificationService notificationService = NotificationService();
 
 @pragma('vm:entry-point')
-Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+Future _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   debugPrint("🔔 Background message: ${message.messageId}");
 }
@@ -69,7 +69,7 @@ void main() async {
   runApp(const MyApp());
 }
 
-// 🟢 Global key for accessing context without BuildContext
+/// 🟢 Global key for accessing context without BuildContext
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 class MyApp extends StatelessWidget {
@@ -110,7 +110,7 @@ class AuthGate extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<User?>(
+    return StreamBuilder(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, authSnapshot) {
         debugPrint(
@@ -127,14 +127,20 @@ class AuthGate extends StatelessWidget {
         if (authSnapshot.hasData && authSnapshot.data != null) {
           final user = authSnapshot.data!;
           debugPrint('✅ AuthGate: User logged in = ${user.email}');
+
+          // 🟢 REFACTORED: Pass user to the new router
           return UserPageRouter(user: user);
         }
 
         // User is not authenticated
         debugPrint('⚠️ AuthGate: No user, showing LoginPage');
 
-        // 🟢 FIX: Clear providers when user logs out
-        _clearAllProvidersSync(context);
+        // 🟢 --- THIS IS THE FIX ---
+        // Schedule the provider-clearing to run *after* the build is complete
+        // to prevent the "setState/notifyListeners called during build" error.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _clearAllProvidersSync(context);
+        });
 
         return const LoginPage();
       },
@@ -159,164 +165,188 @@ class AuthGate extends StatelessWidget {
   }
 }
 
-/// 🟢 FIXED: This widget listens to user doc and handles onboarding navigation
-/// It now properly detects when onboarding is complete and navigates to home
+//
+// 🟢 --- START OF REFACTORED WIDGET ---
+//
+
+/// 🟢 REFACTORED: This widget handles all routing logic for an authenticated user.
+/// It loads providers and then uses a StreamBuilder to determine which page to show.
 class UserPageRouter extends StatefulWidget {
   final User user;
 
-  const UserPageRouter({super.key, required this.user});
+  const UserPageRouter({
+    super.key,
+    required this.user,
+  });
 
   @override
   State<UserPageRouter> createState() => _UserPageRouterState();
 }
 
 class _UserPageRouterState extends State<UserPageRouter> {
-  StreamSubscription<DocumentSnapshot>? _userDocSubscription;
-  Widget _currentPage = const Scaffold(
-    body: Center(child: CircularProgressIndicator()),
-  );
-  bool _hasLoadedProviders = false;
-  bool _hasNavigatedToHome = false; // 🟢 NEW: Track if we already navigated
-  String? _lastLoadedUid; // 🟢 Track which user's data we loaded
+  bool _providersLoaded = false;
+  String? _loadedForUid;
+  late StreamSubscription<User?> _authStateSubscription;
 
   @override
   void initState() {
     super.initState();
-    debugPrint('🔵 UserPageRouter: initState for user ${widget.user.email}');
-    _lastLoadedUid = widget.user.uid;
-    _listenToUserDocument();
+
+    // Load providers after frame is built
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _loadProvidersForUser(widget.user.uid);
+      }
+    });
+
+    // In UserPageRouter initState(), replace the auth listener with:
+    _authStateSubscription =
+        FirebaseAuth.instance.authStateChanges().listen((user) {
+          if (mounted && user != null && user.uid == widget.user.uid) {
+            debugPrint(
+                '🔄 Auth state updated for user ${user.uid}, emailVerified: ${user.emailVerified}');
+
+            // 🟢 FIX: Simple reload without forceRefresh parameter
+            user.reload().then((_) {
+              // Get fresh user object after reload
+              final freshUser = FirebaseAuth.instance.currentUser;
+              if (freshUser != null) {
+                debugPrint(
+                    '✅ User reloaded: emailVerified = ${freshUser.emailVerified}');
+
+                if (mounted) {
+                  setState(() {
+                    debugPrint('✅ UserPageRouter: Rebuilding with fresh user data');
+                  });
+                }
+              }
+            }).catchError((e) {
+              debugPrint('❌ Error reloading user: $e');
+            });
+          }
+        });
+
   }
 
   @override
-  void didUpdateWidget(UserPageRouter oldWidget) {
-    super.didUpdateWidget(oldWidget);
-
-    // 🟢 If user changed, reset everything
-    if (oldWidget.user.uid != widget.user.uid) {
-      debugPrint(
-          '🔄 UserPageRouter: User changed from ${oldWidget.user.email} to ${widget.user.email}');
-      _hasLoadedProviders = false;
-      _hasNavigatedToHome = false; // 🟢 NEW: Reset navigation flag
-      _lastLoadedUid = widget.user.uid;
-      _userDocSubscription?.cancel();
-      _listenToUserDocument();
-    }
+  void dispose() {
+    _authStateSubscription.cancel();
+    super.dispose();
   }
 
-  void _listenToUserDocument() {
-    // Check verification first (for email/password users)
-    if (!widget.user.emailVerified &&
-        widget.user.providerData.any((p) => p.providerId == 'password')) {
-      setState(() {
-        _currentPage = const VerificationPage();
-      });
-      return;
+  @override
+  void didUpdateWidget(covariant UserPageRouter oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 🟢 FIX: Cast oldWidget to UserPageRouter
+    if (oldWidget.user.uid != widget.user.uid) {
+      _loadProvidersForUser(widget.user.uid);
     }
-
-    // User is verified, listen to their document
-    _userDocSubscription = FirebaseFirestore.instance
-        .collection('users')
-        .doc(widget.user.uid)
-        .snapshots()
-        .listen((userDocSnapshot) async {
-      // 🟢 Ignore old user's data
-      if (_lastLoadedUid != widget.user.uid) return;
-
-      if (!userDocSnapshot.exists) {
-        // User document doesn't exist yet - show profile completion
-        if (mounted) {
-          setState(() {
-            _currentPage = const ProfileCompletionPage();
-          });
-        }
-      } else {
-        // User document exists - check onboarding status
-        final data = userDocSnapshot.data() as Map<String, dynamic>?;
-        final bool onboardingComplete =
-        data?.containsKey('onboardingComplete') == true
-            ? data!['onboardingComplete']
-            : false;
-
-        debugPrint('📋 Onboarding status: $onboardingComplete');
-
-        if (onboardingComplete) {
-          // 🟢 FIXED: Load providers ONLY ONCE and navigate
-          if (!_hasLoadedProviders &&
-              mounted &&
-              _lastLoadedUid == widget.user.uid) {
-            debugPrint('🔄 Loading providers for user: ${widget.user.uid}');
-            await _loadProvidersForUser(widget.user.uid);
-            _hasLoadedProviders = true;
-          }
-
-          // 🟢 NEW: Check if we already navigated, to avoid duplicate navigations
-          if (!_hasNavigatedToHome &&
-              mounted &&
-              _lastLoadedUid == widget.user.uid) {
-            debugPrint('✅ Setting currentPage to Bottomnavigation (Home)');
-            _hasNavigatedToHome = true;
-            setState(() {
-              _currentPage =
-              const Bottomnavigation(title: 'Steps4Perks');
-            });
-          }
-        } else {
-          // Onboarding not complete - show onboarding page
-          debugPrint('⏳ Onboarding not complete, showing OnboardingPage');
-          if (mounted && _lastLoadedUid == widget.user.uid) {
-            _hasNavigatedToHome = false; // Reset in case they restart onboarding
-            setState(() {
-              _currentPage = const OnboardingPage();
-            });
-          }
-        }
-      }
-    }, onError: (error) {
-      debugPrint('❌ Error listening to user document: $error');
-      if (mounted && _lastLoadedUid == widget.user.uid) {
-        setState(() {
-          _currentPage = const Scaffold(
-            body: Center(child: Text('Error loading user data.')),
-          );
-        });
-      }
-    });
   }
 
   Future<void> _loadProvidersForUser(String uid) async {
     if (!mounted) return;
 
+    if (_loadedForUid == uid && _providersLoaded) {
+      debugPrint('✅ Providers already loaded for $uid');
+      return;
+    }
+
+    setState(() {
+      _providersLoaded = false;
+      _loadedForUid = uid;
+    });
+
     try {
       debugPrint('🔄 Loading providers for user: $uid');
 
-      // Clear old state first
       if (mounted) {
         context.read<StepTracker>().clear();
         context.read<ProfileImageProvider>().clear();
       }
+
       await ProfileImageService.clear();
 
-      // Load new user data
       if (mounted) {
         await context.read<StepTracker>().loadForUser(uid);
         await context.read<ProfileImageProvider>().loadForUser(uid);
       }
 
       debugPrint('✅ Providers loaded for user: $uid');
+
+      if (mounted) {
+        setState(() {
+          _providersLoaded = true;
+        });
+      }
     } catch (e, stack) {
       debugPrint('❌ Error loading providers: $e\n$stack');
     }
   }
 
   @override
-  void dispose() {
-    debugPrint('🔴 UserPageRouter: dispose');
-    _userDocSubscription?.cancel();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return _currentPage;
+    // 🟢 CRITICAL FIX: Get the latest user object from FirebaseAuth
+    // This ensures we always have the most up-to-date emailVerified status
+    final currentUser = FirebaseAuth.instance.currentUser;
+
+    if (currentUser == null) {
+      debugPrint('❌ User logged out unexpectedly');
+      return const LoginPage();
+    }
+
+    // 🟢 FIX: Check email verification with FRESH user data
+    // This is the key to fixing the stuck verification page issue
+    if (!currentUser.emailVerified &&
+        currentUser.providerData.any((p) => p.providerId == 'password')) {
+      debugPrint(
+          '🔐 User email not verified yet, showing VerificationPage. EmailVerified: ${currentUser.emailVerified}');
+      return const VerificationPage();
+    }
+
+    // Email is verified, continue with normal flow
+    if (!_providersLoaded) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    // Listen to Firestore for onboarding status
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('users')
+          .doc(currentUser.uid)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        if (snapshot.hasError) {
+          debugPrint('❌ Error in UserPageRouter stream: ${snapshot.error}');
+          return const Scaffold(
+            body: Center(child: Text('Error loading user data.')),
+          );
+        }
+
+        if (!snapshot.hasData || !snapshot.data!.exists) {
+          debugPrint('📝 User doc not found, showing ProfileCompletionPage');
+          return const ProfileCompletionPage();
+        }
+
+        final data = snapshot.data!.data() as Map<String, dynamic>?;
+        final bool onboardingComplete = data?['onboardingComplete'] ?? false;
+
+        debugPrint(
+            '📋 UserPageRouter: Onboarding complete = $onboardingComplete');
+
+        if (onboardingComplete) {
+          return const Bottomnavigation(title: 'Steps4Perks');
+        } else {
+          return const OnboardingPage();
+        }
+      },
+    );
   }
 }
