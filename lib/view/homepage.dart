@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:myapp/features/step_gauge.dart';
 import 'package:myapp/features/step_tracker.dart';
 import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
-import 'package:flutter/foundation.dart'; // Import kDebugMode
-//import 'package:myapp/services/database_service.dart';
+import 'package:flutter/foundation.dart';
+// 🟢 REMOVED: No longer need FirebaseAuth or DatabaseService here
+// import 'package:firebase_auth/firebase_auth.dart';
+// import 'package:myapp/services/database_service.dart';
 
-// This is the parent widget that manages the state and provides keys for the tutorial.
+/// This is the parent widget that manages the state and provides keys for the tutorial.
 class HomePage extends StatefulWidget {
-  // Use GlobalKey to identify widgets for the tutorial overlay.
   final GlobalKey stepGaugeKey;
   final GlobalKey dailyStreakKey;
   final GlobalKey pointsEarnedKey;
@@ -27,94 +27,47 @@ class HomePage extends StatefulWidget {
   HomePageState createState() => HomePageState();
 }
 
-class HomePageState extends State<HomePage> {
-  int _oldSteps = 0; // Used for TweenAnimationBuilder's 'begin' value
-  bool _isLoading = true; // Controls shimmer visibility
-  bool _hasLoadedData = false; // Prevents redundant initial data loads
+class HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin {
+
+  // 🟢 REMOVED: All local state is gone (_oldSteps, _isLoading)
+  // 🟢 REMOVED: All data loading logic is gone (initState, _loadInitialData, _loadData)
 
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadData(); // Trigger data loading after the first frame
-    });
-  }
+  bool get wantKeepAlive => true;
 
-  Future<void> _loadData() async {
-    debugPrint("🔁 _loadData called");
-    if (_hasLoadedData) {
-      debugPrint("⏩ Skipping _loadData (already loaded)");
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-      return;
-    }
-
-    final stepTracker = Provider.of<StepTracker>(context, listen: false);
-    final today = DateFormat('yyyy-MM-dd').format(DateTime.now().toLocal());
-
-    try {
-      final data = await stepTracker.getDailyStatsForUI(today);
-      debugPrint(data != null ? "📦 Firestore data received" : "🚫 No data found for today");
-
-      if (data != null) {
-        debugPrint("👣 Steps: ${data['steps']}, 🔥 Streak: ${data['streak']}, 🎯 Daily Points: ${data['dailyPointsEarned']}");
-        stepTracker.setCurrentSteps(data['steps'] ?? 0);
-        final int streakFromDb = (data['streak'] as int?) ?? 0;
-        // Prefer the larger of provider (live) and DB, so we don't clobber the immediate increment
-        if (streakFromDb > stepTracker.currentStreak) {
-          stepTracker.setCurrentStreak(streakFromDb);
-        }
-        // Ensure that hasClaimedToday reflects the 'claimedDailyBonus' field from Firestore
-        // (You've updated database_service.dart to use 'claimedDailyBonus')
-        stepTracker.setClaimedToday(data['claimedDailyBonus'] == true);
-      } else {
-        stepTracker.setCurrentSteps(0);
-        stepTracker.setClaimedToday(false);
-      }
-
-      _hasLoadedData = true;
-    } catch (e, stackTrace) {
-      debugPrint('⚠️ Error loading data: $e');
-      debugPrint('Stack Trace: $stackTrace');
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _oldSteps = stepTracker.currentSteps;
-          debugPrint("✅ Data loading complete. isLoading = $_isLoading, _oldSteps = $_oldSteps");
-        });
-      }
-    }
+  /// ✅ Refresh handler for pull-to-refresh
+  Future<void> _handleRefresh() async {
+    // 🟢 CHANGED: We now call the provider's refresh method
+    await Provider.of<StepTracker>(context, listen: false).refreshData();
   }
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // Keep this for AutomaticKeepAliveClientMixin
+
+    // 🟢 REMOVED: The StreamBuilder<User?> is gone.
+    // AuthGate already guarantees we have a user and are on this page.
+
+    // We just return the HomePageContent directly.
     return HomePageContent(
       stepGaugeKey: widget.stepGaugeKey,
       dailyStreakKey: widget.dailyStreakKey,
       pointsEarnedKey: widget.pointsEarnedKey,
       mockStepsKey: widget.mockStepsKey,
-      oldSteps: _oldSteps,
-      isLoading: _isLoading,
-      loadData: _loadData,
-      parentContext: context, // Pass the context here
+      onRefresh: _handleRefresh,
+      parentContext: context,
     );
   }
 }
 
-// This widget is now the content part that only handles the UI.
+/// This widget handles the UI only - NO CustomTopBar or Scaffold here
 class HomePageContent extends StatelessWidget {
   final GlobalKey stepGaugeKey;
   final GlobalKey dailyStreakKey;
   final GlobalKey pointsEarnedKey;
   final GlobalKey mockStepsKey;
-  final int oldSteps;
-  final bool isLoading;
-  final Future<void> Function() loadData;
-  final BuildContext parentContext; // Receive the context here
+  final Future<void> Function() onRefresh;
+  final BuildContext parentContext;
 
   const HomePageContent({
     super.key,
@@ -122,29 +75,32 @@ class HomePageContent extends StatelessWidget {
     required this.dailyStreakKey,
     required this.pointsEarnedKey,
     required this.mockStepsKey,
-    required this.oldSteps,
-    required this.isLoading,
-    required this.loadData,
-    required this.parentContext, // And here
+    required this.onRefresh,
+    required this.parentContext,
+    // 🟢 REMOVED: oldSteps and isLoading are no longer passed in
   });
 
   @override
   Widget build(BuildContext context) {
+    // 🟢 CHANGED: We now get isLoading and oldSteps directly from the provider
     final stepTracker = Provider.of<StepTracker>(context);
+    final bool isLoading = stepTracker.isLoading;
+    final int oldSteps = stepTracker.oldSteps;
+
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
 
+    // ✅ NO Scaffold or CustomTopBar - just return the content
     return SafeArea(
+      bottom: false, // Allow floating bottom nav
       child: RefreshIndicator(
-        onRefresh: () async {
-          await loadData();
-        },
+        onRefresh: onRefresh,
         child: isLoading
             ? _buildShimmer(screenHeight)
             : SingleChildScrollView(
           padding: EdgeInsets.symmetric(
             horizontal: screenWidth * 0.05,
-            vertical: screenHeight * 0.001,
+            vertical: screenHeight * 0.02,
           ),
           physics: const AlwaysScrollableScrollPhysics(),
           child: Column(
@@ -159,7 +115,7 @@ class HomePageContent extends StatelessWidget {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: const Text(
-                    '🧪 Debug Mode Active',
+                    'Debug Mode Active',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: Colors.deepPurple,
@@ -167,15 +123,15 @@ class HomePageContent extends StatelessWidget {
                     ),
                   ),
                 ),
-              // Use the provided GlobalKey
-              _buildGauge(screenWidth, stepTracker, stepGaugeKey),
+              // 🟢 CHANGED: Pass 'oldSteps' to the gauge
+              _buildGauge(screenWidth, stepTracker, stepGaugeKey, oldSteps),
+              const SizedBox(height: 20),
               _buildSummaryCards(stepTracker, dailyStreakKey, pointsEarnedKey),
               const SizedBox(height: 20),
-              // Pass the context here
               _buildClaimButton(stepTracker, screenWidth, parentContext),
               const SizedBox(height: 20),
-              if (kDebugMode)
-                _buildEmulatorControls(context, mockStepsKey),
+              if (kDebugMode) _buildEmulatorControls(context, mockStepsKey),
+              const SizedBox(height: 100), // ✅ Extra space for floating nav bar
             ],
           ),
         ),
@@ -208,10 +164,10 @@ class HomePageContent extends StatelessWidget {
     );
   }
 
-  // Refactored to accept key
-  Widget _buildGauge(double screenWidth, StepTracker tracker, GlobalKey key) {
+  // 🟢 CHANGED: Added 'oldSteps' parameter
+  Widget _buildGauge(double screenWidth, StepTracker tracker, GlobalKey key, int oldSteps) {
     return SizedBox(
-      key: key, // Assign the key here
+      key: key,
       width: screenWidth * 0.65,
       height: screenWidth * 0.65,
       child: TweenAnimationBuilder<double>(
@@ -220,33 +176,42 @@ class HomePageContent extends StatelessWidget {
           end: tracker.currentSteps.toDouble(),
         ),
         duration: const Duration(milliseconds: 600),
-        builder: (context, value, child) =>
-            StepGauge(currentSteps: value.toInt()),
+        builder: (context, value, child) {
+          // 🟢 NOTE: Your step_gauge.dart file is correct
+          return StepGauge(currentSteps: value.toInt());
+        },
       ),
     );
   }
 
-  // Refactored to accept keys
-  Widget _buildSummaryCards(StepTracker tracker, GlobalKey dailyKey, GlobalKey pointsKey) {
+  Widget _buildSummaryCards(
+      StepTracker tracker, GlobalKey dailyKey, GlobalKey pointsKey) {
     return Row(
       children: [
         Expanded(
           child: _buildCard(
-              Icons.local_fire_department, 'Daily Streak', '${tracker.currentStreak}', dailyKey),
+            Icons.local_fire_department,
+            'Daily Streak',
+            '${tracker.currentStreak}',
+            dailyKey,
+          ),
         ),
         const SizedBox(width: 12),
         Expanded(
-          child: _buildCard(Icons.monetization_on, 'Points Earned',
-              '${tracker.dailyPointsEarned} / ${StepTracker.maxDailyPoints}', pointsKey),
+          child: _buildCard(
+            Icons.monetization_on,
+            'Points Earned',
+            '${tracker.dailyPointsEarned}/${StepTracker.maxDailyPoints}',
+            pointsKey,
+          ),
         ),
       ],
     );
   }
 
-  // Refactored to accept key
   Widget _buildCard(IconData icon, String label, String value, GlobalKey key) {
     return Card(
-      key: key, // Assign the key here
+      key: key,
       elevation: 3,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       child: Padding(
@@ -255,20 +220,23 @@ class HomePageContent extends StatelessWidget {
           children: [
             Icon(icon, size: 32, color: Colors.deepOrange),
             const SizedBox(height: 6),
-            Text(label,
-                style: const TextStyle(fontSize: 14, color: Colors.black54)),
+            Text(
+              label,
+              style: const TextStyle(fontSize: 14, color: Colors.black54),
+            ),
             const SizedBox(height: 4),
-            Text(value,
-                style: const TextStyle(
-                    fontSize: 20, fontWeight: FontWeight.bold)),
+            Text(
+              value,
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
           ],
         ),
       ),
     );
   }
 
-  // Refactored _buildClaimButton to accept context as a parameter
-  Widget _buildClaimButton(StepTracker tracker, double width, BuildContext context) {
+  Widget _buildClaimButton(
+      StepTracker tracker, double width, BuildContext context) {
     final bool canClaim = tracker.dailyPointsEarned >= StepTracker.maxDailyPoints &&
         !tracker.hasClaimedToday;
 
@@ -279,17 +247,23 @@ class HomePageContent extends StatelessWidget {
             ? () async {
           await tracker.claimDailyBonusPoints();
           if (!context.mounted) return;
+
           if (tracker.hasClaimedToday) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('🎉 Claimed ${StepTracker.maxDailyPoints} Daily Points!')),
+              SnackBar(
+                content:
+                Text('✅ Claimed ${StepTracker.maxDailyPoints} Daily Points!'),
+              ),
             );
           } else {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('😞 Failed to claim daily bonus points. Try again.')),
+              const SnackBar(
+                content: Text('❌ Failed to claim daily bonus points. Try again.'),
+              ),
             );
           }
         }
-            : null, // Disable the button
+            : null,
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.deepOrange,
           foregroundColor: Colors.white,
@@ -304,7 +278,7 @@ class HomePageContent extends StatelessWidget {
             Text(
               tracker.hasClaimedToday
                   ? '✅ ${StepTracker.maxDailyPoints} Points Claimed Today'
-                  : 'Claim ${StepTracker.maxDailyPoints} Points (Daily)',
+                  : 'Claim ${StepTracker.maxDailyPoints} Points Daily',
               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
           ],
@@ -313,14 +287,14 @@ class HomePageContent extends StatelessWidget {
     );
   }
 
-  // Refactored to accept key
   Widget _buildEmulatorControls(BuildContext context, GlobalKey key) {
     final stepTracker = Provider.of<StepTracker>(context, listen: false);
+
     return Column(
       children: [
         const SizedBox(height: 10),
         ElevatedButton(
-          key: key, // Assign the key here
+          key: key,
           onPressed: () {
             stepTracker.addMockSteps(1000);
             ScaffoldMessenger.of(context).showSnackBar(
@@ -330,13 +304,12 @@ class HomePageContent extends StatelessWidget {
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.blueGrey,
             foregroundColor: Colors.white,
-            padding:
-            const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
-          child: const Text('➕ Add 1000 Mock Steps (Debug Only)'),
+          child: const Text('Add 1000 Mock Steps (Debug Only)'),
         ),
+        const SizedBox(height: 8),
         ElevatedButton(
           onPressed: () {
             stepTracker.resetMockSteps();
@@ -347,12 +320,10 @@ class HomePageContent extends StatelessWidget {
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.blueGrey,
             foregroundColor: Colors.white,
-            padding:
-            const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
-          child: const Text('Reset mock steps to 0!'),
+          child: const Text('Reset Mock Steps to 0!'),
         ),
       ],
     );

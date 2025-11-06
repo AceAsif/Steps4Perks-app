@@ -1,16 +1,24 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
+import 'package:intl/intl.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 import 'package:myapp/services/notification_service.dart';
 import 'package:myapp/services/database_service.dart';
+import 'package:myapp/services/google_signin.dart';
 import 'package:myapp/widgets/loading_dialog.dart';
 import 'package:myapp/widgets/profile_specific/options_tile.dart';
 import 'package:myapp/widgets/profile_specific/disable_notification_dialog.dart';
 import 'package:myapp/widgets/profile_specific/notification_settings_dialog.dart';
 import 'package:myapp/features/profile_image_provider.dart';
+import 'package:myapp/features/step_tracker.dart';
+import 'package:myapp/main.dart'; // For navigatorKey, syncManager, databaseService
 
 class ProfilePageContent extends StatefulWidget {
   const ProfilePageContent({super.key});
@@ -24,10 +32,8 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
   bool _isPermissionPermanentlyDenied = false;
   late AndroidDeviceInfo _androidInfo;
   final DatabaseService _databaseService = DatabaseService();
-
   String _name = "Asif";
   String _email = "asif@gmail.com";
-
   final List<String> _profileImages = [
     'assets/profile.png',
     'assets/female.png',
@@ -67,10 +73,12 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
 
   Future<void> _loadProfile() async {
     final data = await _databaseService.getUserProfile();
-    setState(() {
-      _name = data?['name'] ?? _name;
-      _email = data?['email'] ?? _email;
-    });
+    if (mounted) {
+      setState(() {
+        _name = data?['name'] ?? _name;
+        _email = data?['email'] ?? _email;
+      });
+    }
   }
 
   Future<void> _editName() async {
@@ -84,26 +92,55 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
           decoration: const InputDecoration(labelText: "Enter your name"),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(null), child: const Text("Cancel")),
-          TextButton(onPressed: () => Navigator.of(ctx).pop(controller.text.trim()), child: const Text("Save")),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(null),
+            child: const Text("Cancel"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
+            child: const Text("Save"),
+          ),
         ],
       ),
     );
 
     if (newName != null && newName.isNotEmpty) {
       await _databaseService.updateUserName(newName);
-      setState(() => _name = newName);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("✅ Name updated successfully!")));
+        setState(() => _name = newName);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("✅ Name updated successfully!")),
+        );
       }
     }
   }
 
   Future<void> _scheduleDailyNotifications() async {
     final notificationService = NotificationService();
-    await notificationService.scheduleNotification(id: 1, title: '☀️ Morning Motivation', body: 'Start your day right! Go for a short walk and earn some perks.', hour: 9, minute: 0, scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle);
-    await notificationService.scheduleNotification(id: 2, title: '🍽️ Lunchtime Steps', body: 'Take a break and get a few steps in before you get back to work!', hour: 13, minute: 0, scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle);
-    await notificationService.scheduleNotification(id: 3, title: '🌙 Night Walk Reminder', body: 'Time to go for a night walk and relax!', hour: 19, minute: 0, scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle);
+    await notificationService.scheduleNotification(
+      id: 1,
+      title: '☀️ Morning Motivation',
+      body: 'Start your day right! Go for a short walk and earn some perks.',
+      hour: 8,
+      minute: 0,
+      scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+    );
+    await notificationService.scheduleNotification(
+      id: 2,
+      title: '🍽️ Lunchtime Steps',
+      body: 'Take a break and get a few steps in before you get back to work!',
+      hour: 13,
+      minute: 0,
+      scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+    );
+    await notificationService.scheduleNotification(
+      id: 3,
+      title: '🌙 Night Walk Reminder',
+      body: 'Time to go for a night walk and relax!',
+      hour: 20,
+      minute: 0,
+      scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+    );
   }
 
   Future<void> _toggleNotifications(bool newValue) async {
@@ -114,17 +151,20 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
       if (granted) {
         await _scheduleDailyNotifications();
       } else {
-        setState(() => _notificationsEnabled = false);
+        if (mounted) setState(() => _notificationsEnabled = false);
       }
     } else {
       await notificationService.cancelAllNotifications();
-      if (context.mounted) {
+      if (mounted) {
         showDisableNotificationDialog(context);
       }
     }
   }
 
   Future<void> _handleManualSync() async {
+    final stepTracker = Provider.of<StepTracker>(context, listen: false);
+    if (!mounted) return;
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -133,15 +173,157 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
       },
     );
 
-    final success = await _databaseService.manualSync();
+    final success = await _databaseService.manualSync(stepTracker);
 
-    if (context.mounted) Navigator.of(context).pop();
+    if (mounted) Navigator.of(context).pop();
 
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(success ? '✅ Data synced successfully!' : '❌ Sync failed. Please try again.'),
-        backgroundColor: success ? Colors.green : Colors.red,
-      ));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            success
+                ? '✅ Data synced successfully!'
+                : '❌ Sync failed. Please try again.',
+          ),
+          backgroundColor: success ? Colors.green : Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// 🟢 CRITICAL: Complete logout with final data sync - FIXED
+  Future<void> _handleLogout() async {
+    final shouldLogout = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Log Out"),
+        content: const Text("Your data will be synced before logging out."),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text("Cancel"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text("Log Out"),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldLogout != true) return;
+    if (!mounted) return;
+
+    // Show loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return const LoadingDialog(message: 'Syncing data & logging out...');
+      },
+    );
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        // 🟢 FIX: Pop dialog even if user is null
+        if (mounted) {
+          Navigator.of(context).pop(); // Close loading
+        }
+        return;
+      }
+
+      // 🟢 STEP 1 & 2: All sync logic (SyncManager, daily stats, profile update)
+      debugPrint('🔄 LOGOUT: Syncing pending data...');
+      await syncManager.syncNow(forceWrite: true);
+
+      debugPrint('🔄 LOGOUT: Saving daily stats...');
+      try {
+        final stepTracker = context.read<StepTracker>();
+        final today = DateFormat('yyyy-MM-dd').format(DateTime.now().toLocal());
+
+        await databaseService.saveStatsAndPoints(
+          date: today,
+          steps: stepTracker.currentSteps,
+          dailyPointsEarned: stepTracker.dailyPointsEarned,
+          streak: stepTracker.currentStreak,
+          claimedDailyBonus: stepTracker.hasClaimedToday,
+        );
+        debugPrint('✅ Daily stats saved');
+      } catch (e) {
+        debugPrint('⚠️  Error saving daily stats: $e');
+      }
+
+      debugPrint('🔄 LOGOUT: Updating user profile...');
+      try {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .update({
+          'lastLogoutTime': FieldValue.serverTimestamp(),
+          'lastSyncedAt': FieldValue.serverTimestamp(),
+        });
+        debugPrint('✅ User profile updated');
+      } catch (e) {
+        debugPrint('⚠️  Error updating user profile: $e');
+      }
+
+      // 🟢 STEP 3: Close loading dialog BEFORE navigation/sign-out
+      // This is the CRITICAL fix for the stuck UI.
+      if (mounted) {
+        Navigator.of(context).pop(); // Close loading dialog
+      }
+
+      // 🟢 Wait a moment for the dialog to close
+      await Future.delayed(const Duration(milliseconds: 200));
+
+      // 🟢 Show success message (optional, but good)
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Data saved. Logged out successfully!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+        // Give user time to see it
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
+
+      // 🟢 STEP 4: Sign out from Google and Firebase
+      // This is now one of the LAST things to happen.
+      debugPrint('🔄 LOGOUT: Signing out...');
+      final googleAuthService = GoogleAuthService();
+      await googleAuthService.signOut();
+      debugPrint('✅ Successfully signed out');
+
+      // 🟢 STEP 5: REMOVE THE MANUAL NAVIGATION
+      // AuthGate will now handle switching to the LoginPage automatically
+      // and without any conflicts.
+      //
+      // REMOVED: navigatorKey.currentState?.pushNamedAndRemoveUntil('/login', (_) => false);
+      //
+
+    } catch (e, stackTrace) {
+      debugPrint('❌ Logout error: $e');
+      debugPrint('Stack: $stackTrace');
+
+      // Close loading dialog if still open
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+
+      // Show error
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Logout failed: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
     }
   }
 
@@ -155,20 +337,44 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
           children: [
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 12),
-              child: Text("Choose Profile Image", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              child: Text(
+                "Choose Profile Image",
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
             ),
             Expanded(
               child: GridView.builder(
                 itemCount: _profileImages.length,
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 3, crossAxisSpacing: 12, mainAxisSpacing: 12,
+                  crossAxisCount: 3,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
                 ),
                 itemBuilder: (context, index) {
                   return GestureDetector(
-                    onTap: () {
-                      provider.updateImageIndex(index);
+                    onTap: () async {
+                      HapticFeedback.mediumImpact();
+                      await provider.updateImageIndex(index);
+
+                      if (!mounted) return;
                       Navigator.pop(context);
+
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Row(
+                            children: [
+                              Icon(Icons.check_circle, color: Colors.white),
+                              SizedBox(width: 8),
+                              Text('Profile picture updated!'),
+                            ],
+                          ),
+                          backgroundColor: Colors.green,
+                          duration: Duration(seconds: 2),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
                     },
                     child: CircleAvatar(
                       backgroundImage: AssetImage(_profileImages[index]),
@@ -197,53 +403,104 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
 
     return SafeArea(
       child: SingleChildScrollView(
-        padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.07, vertical: screenHeight * 0.04),
+        padding: EdgeInsets.symmetric(
+          horizontal: screenWidth * 0.07,
+          vertical: screenHeight * 0.04,
+        ),
         child: Column(
           children: [
+            // Profile Image
             GestureDetector(
               onTap: _showProfileImagePicker,
               child: CircleAvatar(
                 radius: screenWidth * 0.12,
-                backgroundImage: AssetImage(_profileImages[imageProvider.selectedImageIndex]),
+                backgroundImage:
+                AssetImage(_profileImages[imageProvider.selectedImageIndex]),
               ),
             ),
             const SizedBox(height: 8),
-            Text("Tap image to change", style: TextStyle(fontSize: screenWidth * 0.035, color: Colors.grey)),
+            Text(
+              "Tap image to change",
+              style:
+              TextStyle(fontSize: screenWidth * 0.035, color: Colors.grey),
+            ),
             SizedBox(height: screenHeight * 0.02),
+
+            // Name and Email
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(_name, style: TextStyle(fontSize: screenWidth * 0.06, fontWeight: FontWeight.bold, color: bodyTextColor)),
-                IconButton(icon: const Icon(Icons.edit, size: 20), onPressed: _editName),
+                Text(
+                  _name,
+                  style: TextStyle(
+                    fontSize: screenWidth * 0.06,
+                    fontWeight: FontWeight.bold,
+                    color: bodyTextColor,
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.edit, size: 20),
+                  onPressed: _editName,
+                ),
               ],
             ),
-            Text(_email, style: TextStyle(fontSize: screenWidth * 0.045, color: subtitleColor)),
+            Text(
+              _email,
+              style: TextStyle(
+                  fontSize: screenWidth * 0.045, color: subtitleColor),
+            ),
             SizedBox(height: screenHeight * 0.04),
+
+            // App Settings Section
             _buildSectionTitle('App Settings', bodyTextColor),
             OptionTile(
               icon: Icons.notifications,
               label: 'Enable Notifications',
-              trailing: Switch(value: _notificationsEnabled, onChanged: _toggleNotifications, activeColor: Theme.of(context).colorScheme.primary),
+              trailing: Switch(
+                value: _notificationsEnabled,
+                onChanged: _toggleNotifications,
+                activeColor: Theme.of(context).colorScheme.primary,
+              ),
               onTap: () => _toggleNotifications(!_notificationsEnabled),
             ),
             if (!_notificationsEnabled && _isPermissionPermanentlyDenied)
               _buildBlockedNotificationButton(screenHeight, screenWidth),
             SizedBox(height: screenHeight * 0.04),
+
+            // General Section
             _buildSectionTitle('General', bodyTextColor),
-            OptionTile(icon: Icons.sync, label: 'Sync Data', onTap: _handleManualSync),
-            OptionTile(icon: Icons.star, label: 'Referral Boosters', onTap: () {}),
-            OptionTile(icon: Icons.mail_outline, label: 'Contact Support', onTap: () {}),
-            OptionTile(icon: Icons.info_outline, label: 'About Steps4Perks', onTap: () {}),
+            OptionTile(
+                icon: Icons.sync, label: 'Sync Data', onTap: _handleManualSync),
+            OptionTile(
+                icon: Icons.star, label: 'Referral Boosters', onTap: () {}),
+            OptionTile(
+                icon: Icons.mail_outline,
+                label: 'Contact Support',
+                onTap: () {}),
+            OptionTile(
+                icon: Icons.info_outline,
+                label: 'About Steps4Perks',
+                onTap: () {}),
             SizedBox(height: screenHeight * 0.025),
+
+            // Log Out Button
             ElevatedButton(
-              onPressed: () {},
+              onPressed: _handleLogout,
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.black,
                 foregroundColor: Colors.white,
-                padding: EdgeInsets.symmetric(vertical: screenHeight * 0.015, horizontal: screenWidth * 0.05),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                padding: EdgeInsets.symmetric(
+                  vertical: screenHeight * 0.015,
+                  horizontal: screenWidth * 0.05,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
               ),
-              child: Text('Log Out', style: TextStyle(fontSize: screenWidth * 0.045)),
+              child: Text(
+                'Log Out',
+                style: TextStyle(fontSize: screenWidth * 0.045),
+              ),
             ),
           ],
         ),
@@ -267,7 +524,8 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
     );
   }
 
-  Widget _buildBlockedNotificationButton(double screenHeight, double screenWidth) {
+  Widget _buildBlockedNotificationButton(
+      double screenHeight, double screenWidth) {
     return Padding(
       padding: EdgeInsets.only(top: screenHeight * 0.02),
       child: ElevatedButton(
@@ -275,10 +533,18 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
         style: ElevatedButton.styleFrom(
           backgroundColor: Theme.of(context).colorScheme.error,
           foregroundColor: Colors.white,
-          padding: EdgeInsets.symmetric(vertical: screenHeight * 0.015, horizontal: screenWidth * 0.04),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          padding: EdgeInsets.symmetric(
+            vertical: screenHeight * 0.015,
+            horizontal: screenWidth * 0.04,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
         ),
-        child: Text("Notifications Blocked? Fix in App Settings", style: TextStyle(fontSize: screenWidth * 0.04)),
+        child: Text(
+          "Notifications Blocked? Fix in App Settings",
+          style: TextStyle(fontSize: screenWidth * 0.04),
+        ),
       ),
     );
   }

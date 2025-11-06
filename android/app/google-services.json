@@ -12,7 +12,20 @@
           "package_name": "com.example.steps4perks"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "1008163722435-b4tnnk2kjnlj1n23pt9u31bntk67fmrr.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.steps4perks",
+            "certificate_hash": "805602d56e0edbe1692031e760729121d8d82d50"
+          }
+        },
+        {
+          "client_id": "1008163722435-uk17hk6skq5hu66q025cnf82q8uk8for.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyBAzzm3qB3DN7vqS9gub3IMxE_O8Sjys8o"
@@ -20,7 +33,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1008163722435-uk17hk6skq5hu66q025cnf82q8uk8for.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1008163722435-06e7rnio3i50p0v86f7hro6dh73gft30.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.steps4perks"
+              }
+            }
+          ]
         }
       }
     }
