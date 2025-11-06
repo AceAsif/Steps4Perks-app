@@ -445,10 +445,10 @@ class StepTracker with ChangeNotifier {
 
   // --- Background Sync with SyncManager ---
   void _startSyncTimer() {
-    _syncTimer = Timer.periodic(const Duration(minutes: 2), (_) async {
+    _syncTimer = Timer.periodic(const Duration(minutes: 1), (_) async {
       if (_isDisposed) return;
 
-      debugPrint('⏲️  StepTracker: 2-min sync timer fired...');
+      debugPrint('⏲️  StepTracker: 1-min sync timer fired...');
 
       try {
         final prefs = await SharedPreferences.getInstance();
@@ -472,7 +472,7 @@ class StepTracker with ChangeNotifier {
               streak: _currentStreak,
               claimedDailyBonus: _hasClaimedToday,
             );
-            debugPrint('✅ 2-min sync complete (local + Firebase + daily stats)');
+            debugPrint('✅ 1-min sync complete (local + Firebase + daily stats)');
           } catch (e) {
             debugPrint('⚠️  Error saving daily stats: $e');
           }

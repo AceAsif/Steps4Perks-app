@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -91,10 +90,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     // 🟢 Use WidgetsBindingObserver for reliable lifecycle handling
     WidgetsBinding.instance.addObserver(this);
 
-    // 🟢 2-min timer while app is open
-    _syncTimer = Timer.periodic(const Duration(minutes: 2), (_) {
+    // 🟢 1-min timer while app is open
+    _syncTimer = Timer.periodic(const Duration(minutes: 1), (_) {
       if (mounted) {
-        debugPrint('⏲️  SyncManager: Periodic sync (2 min interval)...');
+        debugPrint('⏲️  SyncManager: Periodic sync (1 min interval)...');
         syncManager.syncNow();
       }
     });

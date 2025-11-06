@@ -12,7 +12,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:myapp/services/notification_service.dart';
 import 'package:myapp/services/database_service.dart';
 import 'package:myapp/services/google_signin.dart';
-import 'package:myapp/services/sync_manager.dart';
 import 'package:myapp/widgets/loading_dialog.dart';
 import 'package:myapp/widgets/profile_specific/options_tile.dart';
 import 'package:myapp/widgets/profile_specific/disable_notification_dialog.dart';
@@ -228,17 +227,17 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
+        // 🟢 FIX: Pop dialog even if user is null
         if (mounted) {
           Navigator.of(context).pop(); // Close loading
         }
         return;
       }
 
-      // 🟢 STEP 1: Force sync all pending data via SyncManager
+      // 🟢 STEP 1 & 2: All sync logic (SyncManager, daily stats, profile update)
       debugPrint('🔄 LOGOUT: Syncing pending data...');
       await syncManager.syncNow(forceWrite: true);
 
-      // 🟢 STEP 2: Save current daily stats
       debugPrint('🔄 LOGOUT: Saving daily stats...');
       try {
         final stepTracker = context.read<StepTracker>();
@@ -256,7 +255,6 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
         debugPrint('⚠️  Error saving daily stats: $e');
       }
 
-      // 🟢 STEP 3: Update user profile with logout timestamp
       debugPrint('🔄 LOGOUT: Updating user profile...');
       try {
         await FirebaseFirestore.instance
@@ -271,21 +269,16 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
         debugPrint('⚠️  Error updating user profile: $e');
       }
 
-      // 🟢 STEP 4: Sign out from Google and Firebase
-      debugPrint('🔄 LOGOUT: Signing out...');
-      final googleAuthService = GoogleAuthService();
-      await googleAuthService.signOut();
-      debugPrint('✅ Successfully signed out');
-
-      // 🟢 FIX: Close loading dialog BEFORE navigation
+      // 🟢 STEP 3: Close loading dialog BEFORE navigation/sign-out
+      // This is the CRITICAL fix for the stuck UI.
       if (mounted) {
         Navigator.of(context).pop(); // Close loading dialog
       }
 
-      // 🟢 Wait a moment for dialog to close
+      // 🟢 Wait a moment for the dialog to close
       await Future.delayed(const Duration(milliseconds: 200));
 
-      // 🟢 Show success message
+      // 🟢 Show success message (optional, but good)
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -294,11 +287,23 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
             duration: Duration(seconds: 2),
           ),
         );
+        // Give user time to see it
+        await Future.delayed(const Duration(milliseconds: 500));
       }
 
-      // 🟢 FIX: Use navigatorKey to navigate without context issues
-      await Future.delayed(const Duration(milliseconds: 300));
-      navigatorKey.currentState?.pushNamedAndRemoveUntil('/login', (_) => false);
+      // 🟢 STEP 4: Sign out from Google and Firebase
+      // This is now one of the LAST things to happen.
+      debugPrint('🔄 LOGOUT: Signing out...');
+      final googleAuthService = GoogleAuthService();
+      await googleAuthService.signOut();
+      debugPrint('✅ Successfully signed out');
+
+      // 🟢 STEP 5: REMOVE THE MANUAL NAVIGATION
+      // AuthGate will now handle switching to the LoginPage automatically
+      // and without any conflicts.
+      //
+      // REMOVED: navigatorKey.currentState?.pushNamedAndRemoveUntil('/login', (_) => false);
+      //
 
     } catch (e, stackTrace) {
       debugPrint('❌ Logout error: $e');
@@ -416,7 +421,8 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
             const SizedBox(height: 8),
             Text(
               "Tap image to change",
-              style: TextStyle(fontSize: screenWidth * 0.035, color: Colors.grey),
+              style:
+              TextStyle(fontSize: screenWidth * 0.035, color: Colors.grey),
             ),
             SizedBox(height: screenHeight * 0.02),
 
@@ -440,7 +446,8 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
             ),
             Text(
               _email,
-              style: TextStyle(fontSize: screenWidth * 0.045, color: subtitleColor),
+              style: TextStyle(
+                  fontSize: screenWidth * 0.045, color: subtitleColor),
             ),
             SizedBox(height: screenHeight * 0.04),
 
@@ -462,10 +469,18 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
 
             // General Section
             _buildSectionTitle('General', bodyTextColor),
-            OptionTile(icon: Icons.sync, label: 'Sync Data', onTap: _handleManualSync),
-            OptionTile(icon: Icons.star, label: 'Referral Boosters', onTap: () {}),
-            OptionTile(icon: Icons.mail_outline, label: 'Contact Support', onTap: () {}),
-            OptionTile(icon: Icons.info_outline, label: 'About Steps4Perks', onTap: () {}),
+            OptionTile(
+                icon: Icons.sync, label: 'Sync Data', onTap: _handleManualSync),
+            OptionTile(
+                icon: Icons.star, label: 'Referral Boosters', onTap: () {}),
+            OptionTile(
+                icon: Icons.mail_outline,
+                label: 'Contact Support',
+                onTap: () {}),
+            OptionTile(
+                icon: Icons.info_outline,
+                label: 'About Steps4Perks',
+                onTap: () {}),
             SizedBox(height: screenHeight * 0.025),
 
             // Log Out Button
@@ -509,7 +524,8 @@ class _ProfilePageContentState extends State<ProfilePageContent> {
     );
   }
 
-  Widget _buildBlockedNotificationButton(double screenHeight, double screenWidth) {
+  Widget _buildBlockedNotificationButton(
+      double screenHeight, double screenWidth) {
     return Padding(
       padding: EdgeInsets.only(top: screenHeight * 0.02),
       child: ElevatedButton(
