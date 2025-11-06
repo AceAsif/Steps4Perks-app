@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
+import 'package:myapp/features/step_tracker.dart';
 
 class StepsBarChart extends StatefulWidget {
   final List<String> labels;
@@ -23,6 +24,28 @@ class StepsBarChart extends StatefulWidget {
 }
 
 class _StepsBarChartState extends State<StepsBarChart> {
+  // 🟢 DYNAMIC: Different target for weekly vs monthly
+  late final double stepTarget;
+
+  @override
+  void initState() {
+    super.initState();
+    stepTarget = _calculateStepTarget();
+  }
+
+  /// 🟢 NEW: Calculate correct target based on view
+  double _calculateStepTarget() {
+    const int dailyTarget = StepTracker.streakStepTarget; // 10,000
+
+    if (isWeekly) {
+      // Weekly view: Each bar = 1 day, target = 10,000 steps/day
+      return dailyTarget.toDouble();
+    } else {
+      // Monthly view: Each bar = 1 week, target = 70,000 steps/week
+      return (dailyTarget * 7).toDouble();
+    }
+  }
+
   String formatDate(String dateStr) {
     try {
       final DateTime parsedDate = DateTime.parse(dateStr);
@@ -89,9 +112,9 @@ class _StepsBarChartState extends State<StepsBarChart> {
                   enabled: true,
                   touchTooltipData: BarTouchTooltipData(
                     getTooltipItem: (group, groupIndex, rod, rodIndex) {
-                      final steps = rod.toY.toInt();
+                      final steps = widget.stepValues[groupIndex].toInt();
                       return BarTooltipItem(
-                        '$steps steps\n${widget.labels[groupIndex]}',
+                        '${widget.labels[groupIndex]}\n$steps steps',
                         const TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.bold,
@@ -112,11 +135,17 @@ class _StepsBarChartState extends State<StepsBarChart> {
                   leftTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
-                      reservedSize: 40,
+                      reservedSize: 50,
                       getTitlesWidget: (value, meta) {
-                        if (value == meta.max || value == 0) return const SizedBox.shrink();
+                        if (value == meta.max || value == 0) {
+                          return const SizedBox.shrink();
+                        }
+                        // Format labels based on view
+                        String label = isWeekly
+                            ? '${value.toInt()}'
+                            : '${(value / 1000).toStringAsFixed(0)}k';
                         return Text(
-                          '${value.toInt()}',
+                          label,
                           style: const TextStyle(fontSize: 10, color: Colors.grey),
                         );
                       },
@@ -157,24 +186,7 @@ class _StepsBarChartState extends State<StepsBarChart> {
                   },
                 ),
                 borderData: FlBorderData(show: false),
-                barGroups: List.generate(
-                  widget.labels.length,
-                      (index) => BarChartGroupData(
-                    x: index,
-                    barRods: [
-                      BarChartRodData(
-                        toY: widget.stepValues[index],
-                        color: widget.stepValues[index] > 0
-                            ? Colors.redAccent
-                            : Colors.grey[300],
-                        width: isWeekly ? 20 : 30,
-                        borderRadius: const BorderRadius.vertical(
-                          top: Radius.circular(4),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                barGroups: _buildBarGroups(),
               ),
             ),
           ),
@@ -183,8 +195,87 @@ class _StepsBarChartState extends State<StepsBarChart> {
 
           // Personal Record section
           _buildPersonalRecord(),
+
+          const SizedBox(height: 16),
+
+          // Legend
+          _buildLegend(),
         ],
       ),
+    );
+  }
+
+  /// 🟢 Build bar groups with correct target threshold
+  List<BarChartGroupData> _buildBarGroups() {
+    return List.generate(
+      widget.labels.length,
+          (index) {
+        final double currentSteps = widget.stepValues[index];
+        final double barWidth = isWeekly ? 20 : 30;
+
+        // ❌ EMPTY BAR (0 or negative steps)
+        if (currentSteps <= 0) {
+          return BarChartGroupData(
+            x: index,
+            barRods: [
+              BarChartRodData(
+                toY: 0.1,
+                color: Colors.grey[300],
+                width: barWidth,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(4),
+                ),
+              ),
+            ],
+          );
+        }
+
+        // 🔴 ONLY RED BAR (steps <= target)
+        if (currentSteps <= stepTarget) {
+          return BarChartGroupData(
+            x: index,
+            barRods: [
+              BarChartRodData(
+                toY: currentSteps,
+                color: Colors.redAccent,
+                width: barWidth,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(4),
+                ),
+              ),
+            ],
+          );
+        }
+
+        // 🔴🔵 STACKED BAR (RED + BLUE for steps > target)
+        return BarChartGroupData(
+          x: index,
+          barRods: [
+            BarChartRodData(
+              toY: currentSteps,
+              color: Colors.transparent,
+              width: barWidth,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(4),
+              ),
+              rodStackItems: [
+                // 🔴 RED: Steps towards goal (0 to target)
+                BarChartRodStackItem(
+                  0,
+                  stepTarget,
+                  Colors.redAccent,
+                ),
+                // 🔵 BLUE: Bonus steps above goal (target+)
+                BarChartRodStackItem(
+                  stepTarget,
+                  currentSteps,
+                  Colors.blueAccent,
+                ),
+              ],
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -227,11 +318,7 @@ class _StepsBarChartState extends State<StepsBarChart> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      widget.maxSteps > 0
-                          ? (isWeekly
-                          ? 'Date: ${widget.maxStepsDate}'
-                          : widget.maxStepsDate)
-                          : 'Start tracking to see your records!',
+                      widget.maxSteps > 0 ? widget.maxStepsDate : 'Start tracking!',
                       style: TextStyle(
                         fontSize: 13,
                         color: Colors.grey[600],
@@ -244,6 +331,56 @@ class _StepsBarChartState extends State<StepsBarChart> {
           ),
         ],
       ),
+    );
+  }
+
+  /// 🟢 Build legend with correct thresholds
+  Widget _buildLegend() {
+    final String redLabel = isWeekly
+        ? 'Steps for Points (0-10k)'
+        : 'Weekly Goal (0-70k)';
+    final String blueLabel = isWeekly
+        ? 'Bonus Steps (10k+)'
+        : 'Bonus Steps (70k+)';
+
+    return Container(
+      padding: const EdgeInsets.all(12.0),
+      decoration: BoxDecoration(
+        color: Colors.grey[100],
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          _buildLegendItem(redLabel, Colors.redAccent),
+          const SizedBox(width: 24),
+          _buildLegendItem(blueLabel, Colors.blueAccent),
+        ],
+      ),
+    );
+  }
+
+  /// Build individual legend item
+  Widget _buildLegendItem(String label, Color color) {
+    return Row(
+      children: [
+        Container(
+          width: 20,
+          height: 20,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(3),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
     );
   }
 
