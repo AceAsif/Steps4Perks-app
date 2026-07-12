@@ -11,7 +11,7 @@ import 'package:flutter_timezone/flutter_timezone.dart';
 import '../main.dart';
 
 // --- ADDED IMPORT ---
-import 'package:myapp/widgets/profile_specific/notification_settings_dialog.dart'; // Make sure this path is correct
+import 'package:steps4perks/widgets/profile_specific/notification_settings_dialog.dart'; // Make sure this path is correct
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();

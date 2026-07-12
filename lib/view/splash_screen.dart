@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:myapp/features/bottomnavigation.dart';
-import 'package:myapp/view/onboardingpage.dart';
+import 'package:steps4perks/features/bottomnavigation.dart';
+import 'package:steps4perks/view/onboardingpage.dart';
 
 class SplashScreen extends StatefulWidget {
   // This parameter now receives the value from main.dart

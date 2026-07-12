@@ -3,8 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'forgot_password_page.dart';
 import 'signup_page.dart';
 // import 'profile_completion_page.dart';
-import 'package:myapp/services/google_signin.dart';
-// import 'package:myapp/features/bottomnavigation.dart';
+import 'package:steps4perks/services/google_signin.dart';
+// import 'package:steps4perks/features/bottomnavigation.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});

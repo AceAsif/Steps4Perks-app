@@ -1,10 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
-import 'package:myapp/features/step_tracker.dart';
+import 'package:steps4perks/features/step_tracker.dart';
 import 'package:intl/intl.dart';
-import 'package:myapp/models/available_reward_item.dart';
-import 'package:myapp/models/redeemed_reward_history_item.dart';
+import 'package:steps4perks/models/available_reward_item.dart';
+import 'package:steps4perks/models/redeemed_reward_history_item.dart';
 
 class DatabaseService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -391,6 +391,16 @@ class DatabaseService {
     final dailyStatsRef = userRef.collection('dailyStats').doc(today);
 
     await _firestore.runTransaction((transaction) async {
+      // 🟢 FIX: Check claim status INSIDE the transaction. Previously two
+      // rapid taps (or two devices) could both pass the client-side check
+      // and each award the daily bonus.
+      final dailySnapshot = await transaction.get(dailyStatsRef);
+      final alreadyClaimed = dailySnapshot.data()?['claimedDailyBonus'] == true;
+      if (alreadyClaimed) {
+        debugPrint('🚫 claimDailyPoints: Bonus already claimed for $today (guarded in transaction).');
+        return;
+      }
+
       final userSnapshot = await transaction.get(userRef);
       final int currentTotalPoints = (userSnapshot.data()?['totalPoints'] as int? ?? 0);
 

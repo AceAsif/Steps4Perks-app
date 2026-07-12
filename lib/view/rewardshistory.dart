@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:myapp/services/database_service.dart';
-import 'package:myapp/models/redeemed_reward_history_item.dart';
+import 'package:steps4perks/services/database_service.dart';
+import 'package:steps4perks/models/redeemed_reward_history_item.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 

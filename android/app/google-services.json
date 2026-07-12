@@ -22,6 +22,14 @@
           }
         },
         {
+          "client_id": "1008163722435-ni23heag2ubddjf1j7qbhanjf3g6ko4q.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.steps4perks",
+            "certificate_hash": "b63662dfefea14b9271c979edf0f1b5fa1f8a2c1"
+          }
+        },
+        {
           "client_id": "1008163722435-uk17hk6skq5hu66q025cnf82q8uk8for.apps.googleusercontent.com",
           "client_type": 3
         }

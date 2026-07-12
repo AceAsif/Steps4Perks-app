@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:myapp/view/homepage.dart';
+import 'package:steps4perks/view/homepage.dart';
 
 class TutorialWrapper extends StatefulWidget {
   const TutorialWrapper({super.key});

@@ -1,20 +1,31 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:myapp/services/database_service.dart';
+import 'package:steps4perks/services/database_service.dart';
 
 class StreakManager {
   // ---- Constants / Keys ----
   static const int defaultStreakTarget = 10000; // 10k steps
 
-  // Local cache keys
+  // Local cache keys (base names — namespaced per user, see _key())
   static const String _kLastEvaluatedFor = 'streak_last_evaluated_for';
-  static const String _kCurrentStreak   = 'currentStreak';
+  static const String _kCurrentStreak = 'currentStreak';
 
   // "Which date did we already credit a streak increment for?"
   // Used to avoid double-incrementing once today passes the target.
   static const String _kStreakCreditedFor = 'streakCreditedFor';
+
+  /// 🟢 FIX: Namespace keys per user, matching StepTracker._getPrefsKey().
+  /// Previously StreakManager wrote plain 'currentStreak' while StepTracker
+  /// read '${uid}_currentStreak' — the two never saw each other's values,
+  /// and streak state leaked between accounts on a shared device.
+  static String _key(String base) {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return base;
+    return '${userId}_$base';
+  }
 
   /// Helper: yyyy-MM-dd (local)
   static String _fmt(DateTime d) => DateFormat('yyyy-MM-dd').format(d.toLocal());
@@ -22,7 +33,7 @@ class StreakManager {
   static String yesterdayStr() => _fmt(DateTime.now().subtract(const Duration(days: 1)));
 
   // ---------------------------------------------------------------------------
-  // A) Morning/new-day evaluation (based on **yesterday’s** finalized steps)
+  // A) Morning/new-day evaluation (based on **yesterday's** finalized steps)
   // ---------------------------------------------------------------------------
   /// Idempotently evaluate the streak for [today].
   ///
@@ -42,21 +53,19 @@ class StreakManager {
     int streakTarget = defaultStreakTarget,
   }) async {
     // If already evaluated, just return cached
-    final lastEvaluatedFor = prefs.getString(_kLastEvaluatedFor);
+    final lastEvaluatedFor = prefs.getString(_key(_kLastEvaluatedFor));
     if (lastEvaluatedFor == today) {
-      final cached = prefs.getInt(_kCurrentStreak) ?? 0;
+      final cached = prefs.getInt(_key(_kCurrentStreak)) ?? 0;
       if (kDebugMode) {
         debugPrint('📊 StreakManager: already evaluated for $today → $cached');
       }
-      // Also clear credit flag for today (safety) so we can credit again later if needed
-      await prefs.remove(_kStreakCreditedFor);
       return cached;
     }
 
     final String y = yesterdayStr();
 
     // Short-circuit: if we already credited **yesterday**, then we know yesterday met the target.
-    final bool creditedYesterday = (prefs.getString(_kStreakCreditedFor) == y);
+    final bool creditedYesterday = (prefs.getString(_key(_kStreakCreditedFor)) == y);
     bool metYesterday = creditedYesterday;
 
     if (!creditedYesterday) {
@@ -82,7 +91,7 @@ class StreakManager {
       // keep existing streak (from DB if present, else local)
       newStreak = await db.getUserProfileStreak();
       if (newStreak == 0) {
-        newStreak = prefs.getInt(_kCurrentStreak) ?? 0;
+        newStreak = prefs.getInt(_key(_kCurrentStreak)) ?? 0;
       }
       if (kDebugMode) {
         debugPrint('✅ StreakManager: yesterday met → keep streak $newStreak');
@@ -95,10 +104,10 @@ class StreakManager {
       }
     }
 
-    await prefs.setInt(_kCurrentStreak, newStreak);
-    await prefs.setString(_kLastEvaluatedFor, today);
-    // New day → clear today’s credit marker
-    await prefs.remove(_kStreakCreditedFor);
+    await prefs.setInt(_key(_kCurrentStreak), newStreak);
+    await prefs.setString(_key(_kLastEvaluatedFor), today);
+    // New day → clear today's credit marker
+    await prefs.remove(_key(_kStreakCreditedFor));
 
     return newStreak;
   }
@@ -123,7 +132,7 @@ class StreakManager {
   }) async {
     if (todaySteps < streakTarget) return currentStreak;
 
-    final creditedFor = prefs.getString(_kStreakCreditedFor);
+    final creditedFor = prefs.getString(_key(_kStreakCreditedFor));
     if (creditedFor == today) {
       // Already credited today; nothing to do.
       return currentStreak;
@@ -131,8 +140,8 @@ class StreakManager {
 
     // Credit once
     final int newStreak = currentStreak + 1;
-    await prefs.setInt(_kCurrentStreak, newStreak);
-    await prefs.setString(_kStreakCreditedFor, today);
+    await prefs.setInt(_key(_kCurrentStreak), newStreak);
+    await prefs.setString(_key(_kStreakCreditedFor), today);
 
     await db.setUserProfileStreak(newStreak);
     // Also persist today's stats snapshot (merge) so UI/DB stay consistent.
@@ -151,7 +160,7 @@ class StreakManager {
   }
 
   // ---------------------------------------------------------------------------
-  // C) Pure utility (kept from your original for tests)
+  // C) Pure utility (kept for tests)
   // ---------------------------------------------------------------------------
   static int computeNextStreak(int prevStreak, bool metYesterday) {
     return metYesterday ? (prevStreak + 1) : 0;

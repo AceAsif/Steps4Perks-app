@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:myapp/features/step_tracker.dart';
-import 'package:myapp/view/rewardshistory.dart';
-import 'package:myapp/services/database_service.dart';
-import 'package:myapp/models/available_reward_item.dart';
+import 'package:steps4perks/features/step_tracker.dart';
+import 'package:steps4perks/view/rewardshistory.dart';
+import 'package:steps4perks/services/database_service.dart';
+import 'package:steps4perks/models/available_reward_item.dart';
 
 class RewardsPage extends StatefulWidget {
   const RewardsPage({super.key});

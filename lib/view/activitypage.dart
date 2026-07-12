@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:myapp/features/step_bar_chart.dart';
-import 'package:myapp/services/database_service.dart';
+import 'package:steps4perks/features/step_bar_chart.dart';
+import 'package:steps4perks/services/database_service.dart';
 import 'package:intl/intl.dart';
-import 'package:myapp/widgets/shimmer_loader.dart';
+import 'package:steps4perks/widgets/shimmer_loader.dart';
 import 'package:provider/provider.dart';
-import 'package:myapp/features/step_tracker.dart';
+import 'package:steps4perks/features/step_tracker.dart';
 
 class ActivityPage extends StatefulWidget {
   const ActivityPage({super.key});

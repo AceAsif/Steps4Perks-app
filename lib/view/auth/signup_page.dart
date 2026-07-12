@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/gestures.dart';
-import 'package:myapp/services/database_service.dart';
+import 'package:steps4perks/services/database_service.dart';
 // 🟢 REMOVED this import as we no longer navigate directly to home
-// import 'package:myapp/features/bottomnavigation.dart';
+// import 'package:steps4perks/features/bottomnavigation.dart';
 // 🟢 ADDED this import for the new verification page
-import 'package:myapp/view/auth/verification_page.dart'; // 👈 Make sure you create this file
+import 'package:steps4perks/view/auth/verification_page.dart'; // 👈 Make sure you create this file
 
 class SignupPage extends StatefulWidget {
   const SignupPage({super.key});

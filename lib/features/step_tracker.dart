@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
-import 'package:myapp/services/database_service.dart';
-import 'package:myapp/services/device_service.dart';
-import 'package:myapp/services/permission_service.dart';
-import 'package:myapp/services/pedometer_service.dart';
-import 'package:myapp/services/sync_manager.dart';
-import 'package:myapp/utils/streak_manager.dart';
+import 'package:steps4perks/services/database_service.dart';
+import 'package:steps4perks/services/device_service.dart';
+import 'package:steps4perks/services/permission_service.dart';
+import 'package:steps4perks/services/pedometer_service.dart';
+import 'package:steps4perks/services/sync_manager.dart';
+import 'package:steps4perks/utils/streak_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -150,6 +150,9 @@ class StepTracker with ChangeNotifier {
 
     _syncTimer?.cancel();
     _syncTimer = null;
+
+    // 🟢 FIX: Stop pedometer listeners so a re-login doesn't stack duplicates
+    _pedometerService.stopListening();
 
     debugPrint('✅ StepTracker: State cleared');
     _safeNotifyListeners();
@@ -445,6 +448,9 @@ class StepTracker with ChangeNotifier {
 
   // --- Background Sync with SyncManager ---
   void _startSyncTimer() {
+    // 🟢 FIX: Cancel any existing timer first so repeated loadForUser calls
+    // don't stack multiple periodic timers.
+    _syncTimer?.cancel();
     _syncTimer = Timer.periodic(const Duration(minutes: 1), (_) async {
       if (_isDisposed) return;
 
@@ -675,6 +681,7 @@ class StepTracker with ChangeNotifier {
   @override
   void dispose() {
     _syncTimer?.cancel();
+    _pedometerService.stopListening();
     _isDisposed = true;
     super.dispose();
   }

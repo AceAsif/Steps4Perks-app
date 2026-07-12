@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:myapp/view/homepage.dart';
-import 'package:myapp/view/rewardspage.dart';
-import 'package:myapp/view/activitypage.dart';
-import 'package:myapp/view/profilepage.dart';
-import 'package:myapp/widgets/custom_top_bar.dart';
+import 'package:steps4perks/view/homepage.dart';
+import 'package:steps4perks/view/rewardspage.dart';
+import 'package:steps4perks/view/activitypage.dart';
+import 'package:steps4perks/view/profilepage.dart';
+import 'package:steps4perks/widgets/custom_top_bar.dart';
 
 /// Main Bottom Navigation Scaffold that controls all main pages
 class Bottomnavigation extends StatefulWidget {

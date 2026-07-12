@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:myapp/services/profile_image_service.dart';
-import 'package:myapp/services/database_service.dart';
+import 'package:steps4perks/services/profile_image_service.dart';
+import 'package:steps4perks/services/database_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 

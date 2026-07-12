@@ -9,16 +9,16 @@ import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-import 'package:myapp/services/notification_service.dart';
-import 'package:myapp/services/database_service.dart';
-import 'package:myapp/services/google_signin.dart';
-import 'package:myapp/widgets/loading_dialog.dart';
-import 'package:myapp/widgets/profile_specific/options_tile.dart';
-import 'package:myapp/widgets/profile_specific/disable_notification_dialog.dart';
-import 'package:myapp/widgets/profile_specific/notification_settings_dialog.dart';
-import 'package:myapp/features/profile_image_provider.dart';
-import 'package:myapp/features/step_tracker.dart';
-import 'package:myapp/main.dart'; // For navigatorKey, syncManager, databaseService
+import 'package:steps4perks/services/notification_service.dart';
+import 'package:steps4perks/services/database_service.dart';
+import 'package:steps4perks/services/google_signin.dart';
+import 'package:steps4perks/widgets/loading_dialog.dart';
+import 'package:steps4perks/widgets/profile_specific/options_tile.dart';
+import 'package:steps4perks/widgets/profile_specific/disable_notification_dialog.dart';
+import 'package:steps4perks/widgets/profile_specific/notification_settings_dialog.dart';
+import 'package:steps4perks/features/profile_image_provider.dart';
+import 'package:steps4perks/features/step_tracker.dart';
+import 'package:steps4perks/main.dart'; // For navigatorKey, syncManager, databaseService
 
 class ProfilePageContent extends StatefulWidget {
   const ProfilePageContent({super.key});

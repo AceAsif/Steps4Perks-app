@@ -9,19 +9,19 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest.dart' as tz;
 
 import 'firebase_options.dart';
-import 'package:myapp/theme/app_theme.dart';
-import 'package:myapp/features/step_tracker.dart';
-import 'package:myapp/features/profile_image_provider.dart';
-import 'package:myapp/services/notification_service.dart';
-import 'package:myapp/services/profile_image_service.dart';
-import 'package:myapp/services/sync_manager.dart';
-import 'package:myapp/services/database_service.dart';
-import 'package:myapp/view/onboardingpage.dart';
-import 'package:myapp/view/auth/login_page.dart';
-import 'package:myapp/view/auth/signup_page.dart';
-import 'package:myapp/view/auth/verification_page.dart';
-import 'package:myapp/view/auth/profile_completion_page.dart';
-import 'package:myapp/features/bottomnavigation.dart';
+import 'package:steps4perks/theme/app_theme.dart';
+import 'package:steps4perks/features/step_tracker.dart';
+import 'package:steps4perks/features/profile_image_provider.dart';
+import 'package:steps4perks/services/notification_service.dart';
+import 'package:steps4perks/services/profile_image_service.dart';
+import 'package:steps4perks/services/sync_manager.dart';
+import 'package:steps4perks/services/database_service.dart';
+import 'package:steps4perks/view/onboardingpage.dart';
+import 'package:steps4perks/view/auth/login_page.dart';
+import 'package:steps4perks/view/auth/signup_page.dart';
+import 'package:steps4perks/view/auth/verification_page.dart';
+import 'package:steps4perks/view/auth/profile_completion_page.dart';
+import 'package:steps4perks/features/bottomnavigation.dart';
 
 final NotificationService notificationService = NotificationService();
 final SyncManager syncManager = SyncManager();
@@ -80,7 +80,6 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
-  Timer? _syncTimer;
   AppLifecycleState? _lastLifecycleState;
 
   @override
@@ -90,20 +89,15 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     // 🟢 Use WidgetsBindingObserver for reliable lifecycle handling
     WidgetsBinding.instance.addObserver(this);
 
-    // 🟢 1-min timer while app is open
-    _syncTimer = Timer.periodic(const Duration(minutes: 1), (_) {
-      if (mounted) {
-        debugPrint('⏲️  SyncManager: Periodic sync (1 min interval)...');
-        syncManager.syncNow();
-      }
-    });
+    // 🟢 FIX: Removed the duplicate 1-min sync timer here.
+    // StepTracker already runs its own 1-min timer (started in loadForUser)
+    // which calls syncManager.syncNow() AND persists daily stats — running
+    // both meant two overlapping periodic Firestore writers.
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _syncTimer?.cancel();
-    debugPrint('🛑 SyncManager: Timer canceled');
     super.dispose();
   }
 

@@ -1,16 +1,54 @@
-# myapp
+# Steps4Perks 👟🎁
 
-A new Flutter project.
+A Flutter app that rewards you for walking. Track your daily steps with your phone's pedometer, earn points, build streaks, and redeem points for gift card rewards.
 
-## Getting Started
+## Features
 
-This project is a starting point for a Flutter application.
+- **Step tracking** — live daily step counts via the device pedometer sensor, with a radial gauge and weekly/monthly bar charts
+- **Points system** — earn 1 point per 100 steps (capped at 100 points/day), plus a claimable daily bonus at 10,000 steps
+- **Streaks** — hit 10k steps daily to build and maintain a streak
+- **Rewards** — redeem accumulated points (2,500 minimum) for gift cards, with full redemption history
+- **Offline-first** — steps and points persist locally in SharedPreferences and sync to Firestore on a timer and on app lifecycle events
+- **Auth** — email/password with verification, plus Google Sign-In
+- **Notifications** — local scheduled reminders and Firebase Cloud Messaging support
 
-A few resources to get you started if this is your first Flutter project:
+## Tech stack
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+| Layer | Tech |
+|---|---|
+| Framework | Flutter (Material 3) |
+| State management | Provider (`ChangeNotifier`) |
+| Backend | Firebase Auth, Cloud Firestore, Firebase Storage, FCM |
+| Sensors | `pedometer`, `permission_handler` |
+| Charts | `fl_chart`, `syncfusion_flutter_gauges` |
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Project structure
+
+```
+lib/
+├── features/       # Core domain logic (StepTracker) + composite widgets
+├── models/         # Firestore data models
+├── services/       # Firebase, pedometer, notifications, sync, auth
+├── theme/          # Colors, text styles, app theme
+├── utils/          # StreakManager
+├── view/           # Pages (home, activity, rewards, profile, auth)
+└── widgets/        # Reusable UI components
+```
+
+## Getting started
+
+1. Install Flutter (stable channel) and run `flutter pub get`
+2. Set up a Firebase project and run `flutterfire configure` to generate `firebase_options.dart`
+3. Deploy the Firestore security rules: `firebase deploy --only firestore:rules`
+4. Run on a **physical device** (the pedometer sensor is unavailable on emulators): `flutter run`
+
+## Firestore data model
+
+```
+users/{uid}
+├── totalPoints, currentStreak, name, email, onboardingComplete, ...
+├── dailyStats/{yyyy-MM-dd}     # steps, dailyPointsEarned, streak, claimedDailyBonus
+└── redeemed_rewards/{id}       # redemption history (create-only)
+
+rewards_catalogue/{id}          # read-only rewards, managed via console
+```

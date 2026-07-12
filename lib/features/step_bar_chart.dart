@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
-import 'package:myapp/features/step_tracker.dart';
+import 'package:steps4perks/features/step_tracker.dart';
 
 class StepsBarChart extends StatefulWidget {
   final List<String> labels;

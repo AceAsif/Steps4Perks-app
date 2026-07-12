@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:myapp/features/step_gauge.dart';
-import 'package:myapp/features/step_tracker.dart';
+import 'package:steps4perks/features/step_gauge.dart';
+import 'package:steps4perks/features/step_tracker.dart';
 import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:flutter/foundation.dart';
 // 🟢 REMOVED: No longer need FirebaseAuth or DatabaseService here
 // import 'package:firebase_auth/firebase_auth.dart';
-// import 'package:myapp/services/database_service.dart';
+// import 'package:steps4perks/services/database_service.dart';
 
 /// This is the parent widget that manages the state and provides keys for the tutorial.
 class HomePage extends StatefulWidget {

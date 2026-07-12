@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:myapp/services/database_service.dart';
+import 'package:steps4perks/services/database_service.dart';
 // 🟢 REMOVED: This page no longer navigates
-// import 'package:myapp/features/bottomnavigation.dart';
+// import 'package:steps4perks/features/bottomnavigation.dart';
 
 class ProfileCompletionPage extends StatefulWidget {
   // 🟢 REMOVED: 'user' parameter is no longer passed in

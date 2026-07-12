@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:myapp/services/notification_service.dart';
+import 'package:steps4perks/services/notification_service.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});

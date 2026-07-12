@@ -70,14 +70,17 @@ class SyncManager {
 
       debugPrint('🔄 SyncManager: Syncing ${_pendingUpdates.length} updates...');
 
-      // 🟢 Add timeout to prevent hanging on network issues
-      final result = await FirebaseFirestore.instance
+      // 🟢 FIX: set(merge:true) instead of update() — update() throws
+      // NOT_FOUND if the user document doesn't exist yet (e.g. brand-new
+      // account before profile completion), which silently broke syncing.
+      // Also add timeout to prevent hanging on network issues.
+      await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
-          .update({
+          .set({
         ..._pendingUpdates,
         'lastSyncedAt': FieldValue.serverTimestamp(),
-      }).timeout(
+      }, SetOptions(merge: true)).timeout(
         const Duration(seconds: 10),
         onTimeout: () {
           throw TimeoutException('Firebase sync timed out after 10 seconds');

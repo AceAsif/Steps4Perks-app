@@ -1,9 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:myapp/features/step_tracker.dart';
-import 'package:myapp/features/profile_image_provider.dart';
-import 'package:myapp/services/database_service.dart';
-import 'package:myapp/view/debug_tools_page.dart';
+import 'package:steps4perks/features/step_tracker.dart';
+import 'package:steps4perks/features/profile_image_provider.dart';
+import 'package:steps4perks/services/database_service.dart';
+import 'package:steps4perks/view/debug_tools_page.dart';
 
 class CustomTopBar extends StatefulWidget {
   const CustomTopBar({super.key});
@@ -81,7 +82,10 @@ class _CustomTopBarState extends State<CustomTopBar> {
               // 🟢 CHANGED: Only use for debug access (5 taps)
               // Profile picture editing is now ONLY in ProfilePage
               _tapCount++;
-              if (_tapCount >= 5) {
+              // 🟢 FIX: Debug tools (mock steps, data wipe) must never be
+              // reachable in release builds — that would let users fake
+              // steps and farm reward points.
+              if (_tapCount >= 5 && kDebugMode) {
                 _tapCount = 0;
                 Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const DebugToolsPage()),

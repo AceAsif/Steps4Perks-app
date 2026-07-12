@@ -2,10 +2,10 @@ import 'package:flutter/foundation.dart'; // For kDebugMode
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // REQUIRED for SystemUiOverlayStyle
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:myapp/services/notification_service.dart';
-import 'package:myapp/services/database_service.dart';
+import 'package:steps4perks/services/notification_service.dart';
+import 'package:steps4perks/services/database_service.dart';
 import 'package:provider/provider.dart';
-import 'package:myapp/features/step_tracker.dart';
+import 'package:steps4perks/features/step_tracker.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz;
 
